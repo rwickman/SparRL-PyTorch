@@ -107,7 +107,9 @@ class SparRLNet(nn.Module):
         # Mapping to q-values for pruning edges
         self.q_fc_1 = nn.Linear(self.args.hidden_size, 1)
 
-    def forward(self, state):
+    def forward(self, state, subgraph_mask=None):
+        batch_size = state.subgraph.shape[0]
+
         # Create node embedding
         node_embs = self.node_enc(state.subgraph, state.local_stats)
 
@@ -116,14 +118,22 @@ class SparRLNet(nn.Module):
 
         # Create global statistics embedding
         global_stats_emb = self.global_stats_enc(state.global_stats)
-        print("edge_embs.shape", edge_embs.shape)
-        print("global_stats_emb.shape", global_stats_emb.shape)
 
+        # Extend mask to add place for global stats
+        if subgraph_mask is not None:
+            mask = torch.zeros(batch_size, 1, 1, subgraph_mask.shape[1] + NUM_GLOBAL_STATS, device=device)
+            mask[:, 0, 0, :subgraph_mask.shape[1]] = subgraph_mask
+        else:
+            mask = None
+        
         # Perform MHA over edge embeddings (batch size, # edges, hidden size)
         embs = self.edge_mha_enc(
-            torch.cat((edge_embs, global_stats_emb), 1))
+            torch.cat((edge_embs, global_stats_emb), 1), mask)
 
         # Pass the edge embeddings through FC to get Q-values
         q_vals = self.q_fc_1(embs[:, :-1])
         
-        return q_vals
+        if batch_size == 1:
+            return q_vals.view(-1)
+        else:
+            return q_vals.view(q_vals.shape[0], q_vals.shape[1])

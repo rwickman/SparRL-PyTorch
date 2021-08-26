@@ -1,34 +1,31 @@
 import numpy as np
+import random
 
 from reward_manager import RewardManager
 from conf import *
+from agents.agent import Experience, State
+from dataclasses import dataclass
 
-@dataclass
-class State:
-    subgraph: torch.Tensor
-    global_stats: torch.Tensor
-    local_stats: torch.Tensor
-
-@dataclass
-class Experience:
-    state: State
-    next_state: State
-    action: int
-    reward: float
 
 
 class Environment:
     """Handles environment related tasks/management during an episode."""
-    def __init__(self, args, graph, agent):
-        self.args = args
-        self.graph = graph
+    def __init__(self, args, agent, graph):
+        self.args = args        
         self.agent = agent
+        self._graph = graph 
 
         self.T_lam = self.args.T_lam
 
         # Setup the RewardManager to manage rewards 
-        self._reward_manager = RewardManager(args, graph)
-        self._reward_manager.setup()    
+        self.reward_man = RewardManager(args, graph)
+        self.reward_man.setup()
+        
+        self._removed_edges = set()
+
+    @property
+    def num_nodes(self):
+        return self._graph.num_nodes
 
     def reset(self):
         """Reset environment for next episode."""
@@ -41,37 +38,45 @@ class Environment:
         self.agent.reset()
 
     def _sample_T(self) -> int:
+        # Sample from possion distribution
         T = np.random.poisson(self.T_lam)
-        return np.clip(T, 1, self.args.max_prune)
+
+        # Clip between valid bounds
+        return np.clip(T, 1, self.args.T_max)
 
     def sample_subgraph(self, subgraph_len: int):
         """Sample a subgraph of edges."""
-        sampled_edges = self.graph.sample_edges(size)
+        sampled_edges = self._graph.sample_edges(subgraph_len)
 
         return sampled_edges
 
     def prune_edge(self, edge_idx: int, subgraph: torch.Tensor):
         """Prune an edge from the subgraph and the graph."""
-        edge = [subgraph[2*edge_idx], subgraph[2*edge_idx + 1]]
-
+        edge = [subgraph[0, 2*edge_idx], subgraph[0, 2*edge_idx + 1]]
         # Shift back to original node ids
-        edge = [edge[0] - 1, edge[1] - 1]
+        edge = (edge[0] - 1, edge[1] - 1)
 
         # Remove from graph
-        self._removed_edges(edge)
+        self._removed_edges.add(edge)
         self._graph.del_edge(edge[0], edge[1])
 
 
     def create_state(self, subgraph_len: int, T: int, t: int):
         """Create the current state for the episode."""
-
+        
         # Sample random edges
-        subgraph = sample_subgraph(subgraph_len)
+        subgraph_len = min(subgraph_len, self._graph.get_num_edges())
+        
+        # Sanity-check
+        if subgraph_len <= 0:
+            raise Exception("Zero edges in graph.")
+
+        subgraph = self.sample_subgraph(subgraph_len)
         
         # Create global statistics
         prune_left = np.log(T-t + 1)
         num_edges_left = np.log(self._graph.get_num_edges() + 1)
-        global_stats = torch.tensor([[prune_left, num_edges_left]], device=device, dtype=torch.float32)
+        global_stats = torch.tensor([[[prune_left, num_edges_left]]], device=device, dtype=torch.float32)
 
         # Create local node statistics
         node_ids = []
@@ -80,29 +85,85 @@ class Environment:
             node_ids.append(e[1])
 
         # Get node degrees
-        degrees = self.graph.degree(node_ids)
+        degrees = self._graph.degree(node_ids)
         if isinstance(degrees, tuple):
             # Must be directed graph
             degs = torch.tensor(list(zip(degrees[0], degrees[1])), device=device)
         else:
             degs = torch.tensor(list(zip(degrees, [0] * len(degrees))), device=device)
         
-        local_stats = torch.tensor([degs], device=device, dtype=torch.float32)
+        
+        local_stats = degs.unsqueeze(0)#torch.tensor(degs], device=device, dtype=torch.float32)
 
-        # Scale the degrees
-        local_stats = np.log(local_stats + 1)
-
+        # Scale the degreesself.max_preprune
 
         # Add one to subgraph as node ID 0 is reserved for empty node
         subgraph = torch.tensor(subgraph, device=device, dtype=torch.int32) + 1
-        subgraph.flatten().unsqueeze(0)
+        subgraph = subgraph.flatten().unsqueeze(0)
         
         return State(subgraph, global_stats, local_stats)
 
-    def run(self):
-        """Run an episode."""
-        T = self._sample_T()
 
+    def preprune(self, T: int):
+        """Preprune edges from the graph before an episode.
+
+        Args:
+            T: number of edges that are pruned in the episode. 
+        """
+        # Calculate the maximum number of edges that can be prepruned
+        num_edges = self._graph.get_num_edges()
+        max_preprune = min(
+            num_edges- T,
+            int(num_edges * self.args.preprune_pct))
+        
+        if max_preprune <= 0:
+            return
+
+        # Sample the number of edges to prune
+        num_preprune = random.randint(1, max_preprune)
+        subgraph = self.sample_subgraph(num_preprune)        
+        
+        
+        # Prune the edges
+        for edge in subgraph:
+            self._removed_edges.add(edge)
+            self._graph.del_edge(edge[0], edge[1])
+
+        
+
+    def run(self):
+        for e_i in range(self.args.episodes):            
+            print("e_i", e_i)
+            
+            # TODO: Preprune before each episode, will need to update sample_T as well
+            # Run an episode
+            final_reward = self.run_episode()
+            print("final_reward", final_reward)
+
+            # Reset the environment state
+            self.reset()
+
+            if not self.agent.is_expert and self.agent.is_ready_to_train:
+                print("TRAINING MODEL")
+                # Train the model
+                for _ in range(self.args.train_iter):
+                    self.agent.train()
+
+                self.agent.save(final_reward)
+
+    def run_episode(self) -> float:
+        """Run an episode."""
+        
+        
+        # Sample number of edges to prune
+        T = self._sample_T()
+        
+        # Preprune edges
+        self.preprune(T)
+
+        print("T", T)
+
+        # Prune edges
         for t in range(T):
             # Create the current state
             state = self.create_state(self.args.subgraph_len, T, t)
@@ -114,7 +175,8 @@ class Environment:
                         prev_state,
                         state,
                         edge_idx,
-                        reward))
+                        reward,
+                        self.agent.is_expert))
 
             # Get edge to prune
             edge_idx = self.agent(state)
@@ -123,21 +185,29 @@ class Environment:
             self.prune_edge(edge_idx, state.subgraph)
 
             # Compute the reward for the sparsification decision
-            reward = self._reward_manager.compute_reward()
+            reward = self.reward_man.compute_reward()
+            
+            # ep_return += reward * self.args.gamma ** (T- t - 1)
 
             prev_state = state
         
+
+        # Get a next state if there are still enough edges in the graph
+        if self._graph.get_num_edges() >= 1:
+            state = self.create_state(self.args.subgraph_len, T, t)
+            print("self._graph.get_num_edges()", self._graph.get_num_edges())
+            
+
         # Add the last experience
         self.agent.add_ex(
             Experience(
                 prev_state,
-                None,
+                state,
                 edge_idx,
-                reward))
+                reward,
+                self.agent.is_expert))
         
-        # Reset the environment state
-        self.reset()
-        
+        return reward
 
         
 

@@ -5,6 +5,7 @@ from networkx.algorithms.community import greedy_modularity_communities
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
+import random
 
 class Graph:
     def __init__(self, args):
@@ -61,8 +62,9 @@ class Graph:
             degrees = [d[1] for d in self._G.degree(node_ids)]
             
             return degrees        
-
-    def get_num_nodes(self):
+    
+    @property
+    def num_nodes(self):
         return self._G.number_of_nodes()
     
     def get_neighbors(self, node):
@@ -74,8 +76,7 @@ class Graph:
         Args:
             size: number of samples.
         """
-        return np.random.choice(self._G.edges, size=size, replace=False)
-    
+        return random.sample(self._G.edges, size)
 
     def copy(self):
         return Graph(self.args)
