@@ -1,5 +1,6 @@
 import numpy as np
 import random
+from scipy.stats import betabinom
 
 from reward_manager import RewardManager
 from conf import *
@@ -14,8 +15,6 @@ class Environment:
         self.args = args        
         self.agent = agent
         self._graph = graph 
-
-        self.T_lam = self.args.T_lam
 
         # Setup the RewardManager to manage rewards 
         self.reward_man = RewardManager(args, graph)
@@ -39,10 +38,13 @@ class Environment:
 
     def _sample_T(self) -> int:
         # Sample from possion distribution
-        T = np.random.poisson(self.T_lam)
+        #T = np.random.poisson(self.T_lam)
+
+        # Predict a point in the valid range, shifting by 1
+        T = betabinom.ppf(random.random(), self.args.T_max-1, self.args.T_alpha, self.args.T_beta, loc=1)
 
         # Clip between valid bounds
-        return np.clip(T, 1, self.args.T_max)
+        return int(np.clip(T, 1, self.args.T_max))
 
     def sample_subgraph(self, subgraph_len: int):
         """Sample a subgraph of edges."""
@@ -121,6 +123,9 @@ class Environment:
 
         # Sample the number of edges to prune
         num_preprune = random.randint(1, max_preprune)
+
+        # TODO: Preprune using expert instead
+
         subgraph = self.sample_subgraph(num_preprune)        
         
         
@@ -149,8 +154,9 @@ class Environment:
                 for _ in range(self.args.train_iter):
                     self.agent.train()
 
+                # Save the models
                 self.agent.save(final_reward)
-
+                
     def run_episode(self) -> float:
         """Run an episode."""
         

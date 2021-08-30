@@ -9,23 +9,23 @@ class RewardManager:
     loaded_reward_data = Value("i", False)
     
     def __init__(self, args, graph):
-        self._args = args
+        self.args = args
         self._graph = graph
         self._reward_lock = Lock()
         # self._load_reward_data()
-        self._reward_json = os.path.join(self._args.save_dir, "rewards.json")
-        if self._args.obj == "com":
-            self._com_detect = CommunityDetection(self._args, self._graph)
+        self._reward_json = os.path.join(self.args.save_dir, "rewards.json")
+        if self.args.obj == "com":
+            self._com_detect = CommunityDetection(self.args, self._graph)
 
 
 
     def setup(self, part=None):
-        if self._args.obj == "spsp":
+        if self.args.obj == "spsp":
             # Return reward for shortest path
             self._setup_spsp(part)
-        elif self._args.obj == "com":
+        elif self.args.obj == "com":
             self._setup_com()
-        elif self._args.obj == "spearman":
+        elif self.args.obj == "spearman":
             self._setup_spearman()
         else:
             # By default use page rank
@@ -33,12 +33,12 @@ class RewardManager:
             self._prior_pr = self._graph.get_page_ranks()
     
     def compute_reward(self):
-        if self._args.obj == "spsp":
+        if self.args.obj == "spsp":
             # Return reward for shortest path
             cur_reward = self._compute_spsp_reward()
-        elif self._args.obj == "com":
+        elif self.args.obj == "com":
             cur_reward = self._compute_com_reward()
-        elif self._args.obj == "spearman":
+        elif self.args.obj == "spearman":
             cur_reward = self._compute_spearman_reward()
         else:
             #print("USING PR REWARD")
@@ -74,30 +74,30 @@ class RewardManager:
 
     def _compute_spearman_reward(self):
         cur_pr = list(self._graph.get_page_ranks().values())
-        return stats.spearmanr(self._org_pr, cur_pr).correlation
+        return stats.spearmanr(self._org_pr, cur_pr).correlation * self.args.reward_factor
 
     def standardize_reward(self, mse):
         with self._reward_lock:
             # Only update statistics if training
-            if self._args.episodes > 0:
+            if self.args.episodes > 0:
                 # Compute online statistics
-                self._args.n.value += 1
+                self.args.n.value += 1
 
                 # Clip by max n value
-                self._args.n.value = min(self._args.n.value, self._args.max_n)
+                self.args.n.value = min(self.args.n.value, self.args.max_n)
  
-                if self._args.n.value == 1:
-                    self._args.mean_mse.value = mse
+                if self.args.n.value == 1:
+                    self.args.mean_mse.value = mse
                 else:    
-                    delta = mse - self._args.mean_mse.value
-                    self._args.mean_mse.value += delta / self._args.n.value
-                    self._args.m2.value += delta * (mse - self._args.mean_mse.value)
-                    self._args.var_mse.value = self._args.m2.value / (self._args.n.value - 1)
+                    delta = mse - self.args.mean_mse.value
+                    self.args.mean_mse.value += delta / self.args.n.value
+                    self.args.m2.value += delta * (mse - self.args.mean_mse.value)
+                    self.args.var_mse.value = self.args.m2.value / (self.args.n.value - 1)
 
-            if self._args.n.value <= 1 or self._args.var_mse.value ** 0.5 == 0.0:
+            if self.args.n.value <= 1 or self.args.var_mse.value ** 0.5 == 0.0:
                 return mse
             else:
-                return (mse - self._args.mean_mse.value) / self._args.var_mse.value ** 0.5
+                return (mse - self.args.mean_mse.value) / self.args.var_mse.value ** 0.5
 
     
     def _setup_spsp(self, part=None):
@@ -121,9 +121,9 @@ class RewardManager:
                         self._spsp_pairs.append((src_id, dst_id))
                 
                 
-                if len(self._spsp_pairs) >= self._args.num_spsp_pairs:    
+                if len(self._spsp_pairs) >= self.args.num_spsp_pairs:    
                     break
-            if len(self._spsp_pairs) >= self._args.num_spsp_pairs:    
+            if len(self._spsp_pairs) >= self.args.num_spsp_pairs:    
                     break
 
         self._spsp_dists = np.array(self._spsp_dists)
@@ -171,18 +171,18 @@ class RewardManager:
     # def _load_reward_data(self):
     #     with self._reward_lock:
     #         if not RewardManager.loaded_reward_data.value:
-    #             if self._args.load and os.path.exists(self._reward_json):
+    #             if self.args.load and os.path.exists(self._reward_json):
     #                 with open(self._reward_json) as f:
     #                     reward_data = json.load(f)
-    #                     self._args.mean_mse = Value("d", reward_data["mean_mse"])
-    #                     self._args.var_mse = Value("d", reward_data["var_mse"])
-    #                     self._args.m2 = Value("d", reward_data["m2"])
-    #                     self._args.n = Value("i", reward_data["n"])
+    #                     self.args.mean_mse = Value("d", reward_data["mean_mse"])
+    #                     self.args.var_mse = Value("d", reward_data["var_mse"])
+    #                     self.args.m2 = Value("d", reward_data["m2"])
+    #                     self.args.n = Value("i", reward_data["n"])
     #             else:
-    #                 self._args.mean_mse = Value("d", 0.0)
-    #                 self._args.var_mse = Value("d", 0.0)
-    #                 self._args.m2 = Value("d", 0.0)
-    #                 self._args.n = Value("i", 0)
+    #                 self.args.mean_mse = Value("d", 0.0)
+    #                 self.args.var_mse = Value("d", 0.0)
+    #                 self.args.m2 = Value("d", 0.0)
+    #                 self.args.n = Value("i", 0)
                 
     #             RewardManager.loaded_reward_data.value = True
 
@@ -191,10 +191,10 @@ class RewardManager:
     #     """Save the reward data."""
     #     with self._reward_lock:
     #         reward_data = {
-    #             "mean_mse" : self._args.mean_mse.value,
-    #             "var_mse" : self._args.var_mse.value,
-    #             "m2" : self._args.m2.value,
-    #             "n" : self._args.n.value
+    #             "mean_mse" : self.args.mean_mse.value,
+    #             "var_mse" : self.args.var_mse.value,
+    #             "m2" : self.args.m2.value,
+    #             "n" : self.args.n.value
     #         }
     #         with open(self._reward_json, "w") as f:
     #             json.dump(reward_data, f)

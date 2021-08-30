@@ -121,7 +121,7 @@ class SparRLNet(nn.Module):
 
         # Extend mask to add place for global stats
         if subgraph_mask is not None:
-            mask = torch.zeros(batch_size, 1, 1, subgraph_mask.shape[1] + NUM_GLOBAL_STATS, device=device)
+            mask = torch.zeros(batch_size, 1, 1, subgraph_mask.shape[1] + 1, device=device)
             mask[:, 0, 0, :subgraph_mask.shape[1]] = subgraph_mask
         else:
             mask = None
@@ -132,7 +132,7 @@ class SparRLNet(nn.Module):
 
         # Pass the edge embeddings through FC to get Q-values
         q_vals = self.q_fc_1(embs[:, :-1])
-        
+
         if batch_size == 1:
             return q_vals.view(-1)
         else:
