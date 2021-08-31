@@ -29,8 +29,8 @@ class Environment:
     def reset(self):
         """Reset environment for next episode."""
         # Restore pruned edges to graph
-        for pair in self._removed_edges:
-            self._graph.add_edge(pair[0], pair[1])
+        for edge in self._removed_edges:
+            self._graph.add_edge(edge[0], edge[1])
 
         self._removed_edges = set()
 
@@ -56,25 +56,25 @@ class Environment:
         """Prune an edge from the subgraph and the graph."""
         edge = [subgraph[0, 2*edge_idx], subgraph[0, 2*edge_idx + 1]]
         # Shift back to original node ids
-        edge = (edge[0] - 1, edge[1] - 1)
+        edge = (int(edge[0] - 1), int(edge[1] - 1))
 
         # Remove from graph
         self._removed_edges.add(edge)
         self._graph.del_edge(edge[0], edge[1])
 
-
     def create_state(self, subgraph_len: int, T: int, t: int):
         """Create the current state for the episode."""
         
-        # Sample random edges
+        # Clip subgraph_len to valid range
         subgraph_len = min(subgraph_len, self._graph.get_num_edges())
-        
+
         # Sanity-check
         if subgraph_len <= 0:
             raise Exception("Zero edges in graph.")
 
+        # Sample random edges
         subgraph = self.sample_subgraph(subgraph_len)
-        
+
         # Create global statistics
         prune_left = np.log(T-t + 1)
         num_edges_left = np.log(self._graph.get_num_edges() + 1)
@@ -97,14 +97,14 @@ class Environment:
         
         local_stats = degs.unsqueeze(0)#torch.tensor(degs], device=device, dtype=torch.float32)
 
-        # Scale the degreesself.max_preprune
+        # Scale the degrees
+        local_stats = torch.log(local_stats + 1)
 
         # Add one to subgraph as node ID 0 is reserved for empty node
         subgraph = torch.tensor(subgraph, device=device, dtype=torch.int32) + 1
         subgraph = subgraph.flatten().unsqueeze(0)
         
         return State(subgraph, global_stats, local_stats)
-
 
     def preprune(self, T: int):
         """Preprune edges from the graph before an episode.
@@ -115,26 +115,22 @@ class Environment:
         # Calculate the maximum number of edges that can be prepruned
         num_edges = self._graph.get_num_edges()
         max_preprune = min(
-            num_edges- T,
+            num_edges - T - 1,
             int(num_edges * self.args.preprune_pct))
         
         if max_preprune <= 0:
             return
 
         # Sample the number of edges to prune
-        num_preprune = random.randint(1, max_preprune)
+        num_preprune = random.randint(0, max_preprune)
 
-        # TODO: Preprune using expert instead
+        # TODO: Consider preprune using expert instead
+        subgraph = self.sample_subgraph(num_preprune)       
 
-        subgraph = self.sample_subgraph(num_preprune)        
-        
-        
         # Prune the edges
         for edge in subgraph:
             self._removed_edges.add(edge)
             self._graph.del_edge(edge[0], edge[1])
-
-        
 
     def run(self):
         for e_i in range(self.args.episodes):            
@@ -159,8 +155,6 @@ class Environment:
                 
     def run_episode(self) -> float:
         """Run an episode."""
-        
-        
         # Sample number of edges to prune
         T = self._sample_T()
         
@@ -202,7 +196,6 @@ class Environment:
         if self._graph.get_num_edges() >= 1:
             state = self.create_state(self.args.subgraph_len, T, t)
             print("self._graph.get_num_edges()", self._graph.get_num_edges())
-            
 
         # Add the last experience
         self.agent.add_ex(

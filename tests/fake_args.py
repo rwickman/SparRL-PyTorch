@@ -1,5 +1,3 @@
-
-
 class FakeArgs:
     def __init__(self):
         self.emb_size = 8
@@ -12,3 +10,9 @@ class FakeArgs:
         self.edge_list = "fake_graphs/fake_small_graph.txt"
         self.obj = ""
         self.is_dir = False
+        self.lr_gamma = 0.999
+        self.lr = 1e-5
+        self.dqn_steps = 1
+        self.save_dir = ""
+        self.preprune_pct = 0.1
+        self.load = False
