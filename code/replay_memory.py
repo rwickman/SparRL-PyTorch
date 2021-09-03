@@ -4,7 +4,7 @@ import os
 import random
 import math
 
-from agents.agent import Experience
+from agents.storage import Experience
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -96,14 +96,14 @@ class PrioritizedExReplay:
         
         # Increase per beta by the number of episodes that have elapsed
         cur_per_beta = min((train_step / self.args.train_iter)/self.args.episodes, 1) * (1-self.args.per_beta) + self.args.per_beta
-        print("cur_per_beta", cur_per_beta)
+        #print("cur_per_beta", cur_per_beta)
 
         is_ws = (sample_ps  * self.cur_cap()) ** -cur_per_beta
         
 
         # Normalize to scale the updates downwards
         is_ws  = is_ws / is_ws.max()
-        print("is_ws", is_ws)
+        #print("is_ws", is_ws)
 
         return is_ws, exps, indices
 
@@ -111,7 +111,7 @@ class PrioritizedExReplay:
         return self._sum_tree.cur_cap()
 
     def update_priorities(self, indices, errors, is_experts: torch.tensor):
-        print("is_experts", is_experts)
+        #print("is_experts", is_experts)
         expert_priority_bonus = is_experts * self.args.expert_epsilon
         for idx, error, bonus in zip(indices, errors, expert_priority_bonus):
             priority = self._compute_priority(error) + bonus

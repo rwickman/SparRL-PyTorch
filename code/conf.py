@@ -1,7 +1,8 @@
+"""Non-configurable settings."""
 import torch
 
 # Number of global statistics
-NUM_GLOBAL_STATS = 2
+NUM_GLOBAL_STATS = 3
 
 # Number of local statistics
 NUM_LOCAL_STATS = 2

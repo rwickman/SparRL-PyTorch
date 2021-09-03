@@ -2,7 +2,8 @@ import random
 
 from model import SparRLNet
 from conf import *
-from agents.agent import Agent, State
+from agents.agent import Agent
+from agents.storage import State
 
 
 class RandomAgent(Agent):

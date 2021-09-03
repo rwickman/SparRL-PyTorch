@@ -60,6 +60,12 @@ class ExpertAgent(Agent):
         Returns:
             an edge index.
         """
-        min_edge = self.find_min_score_edge(state.subgraph[0])
-
-        return min_edge
+        batch_size = state.subgraph.shape[0] 
+        min_edges = []
+        for i in range(batch_size):
+            min_edges.append(self.find_min_score_edge(state.subgraph[i]))
+        
+        if batch_size == 1:
+            return min_edges[0]
+        else:
+            return min_edges

@@ -25,20 +25,22 @@ class ResultsManager:
         final_rewards = []
         self.env.agent = agent
 
-        for i in range(self.args.eval_episodes):
+        for i in range(self.args.episodes):
             final_rewards.append(self.run_episode(agent))
             self.env.reset()
         
         return final_rewards
 
     def run_episode(self, agent):
-        self.env.preprune(self.args.T_eval)
-        for t in range(self.args.T_eval):
-            state = self.env.create_state(self.args.subgraph_len, self.args.T_eval, t)
+        #self.env.preprune(self.args.T_eval)
+        for t in range(self.args.T_max):
+            state = self.env.create_state(self.args.subgraph_len, self.args.T_max, t)
+            #print("state", state.subgraph)
             edge_idx = agent(state)
+            #print("edge_idx", edge_idx)
             self.env.prune_edge(edge_idx, state.subgraph)
         
-        return self.env.reward_man.compute_reward()
+        return self.env.reward_man.compute_sparmanr()
 
 
     def plot_results(self, rewards):

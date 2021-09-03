@@ -72,9 +72,16 @@ class RewardManager:
         mse = np.mean((self._spsp_dists - cur_spsp_dists) ** 2)
         return -mse
 
+    def compute_sparmanr(self):
+        cur_pr = list(self._graph.get_page_ranks().values()) 
+        cur_spearmanr = stats.spearmanr(self._org_pr, cur_pr).correlation
+        return cur_spearmanr
+
     def _compute_spearman_reward(self):
-        cur_pr = list(self._graph.get_page_ranks().values())
-        return stats.spearmanr(self._org_pr, cur_pr).correlation * self.args.reward_factor
+        cur_spearmanr = self.compute_sparmanr()
+        reward = -(self._prev_spearmanr - cur_spearmanr)
+        self._prev_spearmanr = cur_spearmanr
+        return reward#stats.spearmanr(self._org_pr, cur_pr).correlation #* self.args.reward_factor
 
     def standardize_reward(self, mse):
         with self._reward_lock:
@@ -147,6 +154,7 @@ class RewardManager:
     
     def _setup_spearman(self):
         self._org_pr = list(self._graph.get_page_ranks().values())
+        self._prev_spearmanr = 1.0
 
     def _compute_com_reward(self):
         cur_ari = self._com_detect.ARI_louvain()

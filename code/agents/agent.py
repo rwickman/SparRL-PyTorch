@@ -1,29 +1,13 @@
 import torch
+
 from dataclasses import dataclass
-
-
-@dataclass
-class State:
-    subgraph: torch.Tensor
-    global_stats: torch.Tensor
-    local_stats: torch.Tensor
-
-
-@dataclass
-class Experience:
-    state: State
-    next_state: State
-    action: int
-    reward: float
-    is_expert: bool = False
-    gamma: float = 0.99
 
 
 class Agent:
     def __init__(self, args, is_expert: bool =False):
         self.args = args
         # Temporary buffer for experiences in an episode
-        self._exp_buffer = []
+        self._ex_buffer = []
         self.is_expert = is_expert
 
     def _get_valid_edges(self, subgraph: torch.Tensor):

@@ -8,7 +8,8 @@ import json
 
 from model import SparRLNet
 from conf import *
-from agents.agent import Agent, State
+from agents.agent import Agent
+from agents.storage import State
 from agents.expert_agent import ExpertAgent
 
 
@@ -25,15 +26,11 @@ class RLAgent(Agent):
             "final_rewards" : [],
             "mse_losses" : []
         }
-
-        # self._update_step = 0
-
-        # # Save the final rewards
-        # self._final_rewards = []
         
         # Create SparRL networks
         self._sparrl_net = SparRLNet(self.args, num_nodes).to(device)
         self._sparrl_net_tgt = SparRLNet(self.args, num_nodes).to(device)
+        self._sparrl_net_tgt.eval()
 
         # Create optimizer and LR scheduler to decay LR
         self._optim = optim.Adam(self._sparrl_net.parameters(), self.args.lr)
@@ -63,16 +60,18 @@ class RLAgent(Agent):
         return self._memory.cur_cap() >= self.args.batch_size
 
     def reset(self):
-        # Update number of elapsed episdoes
-        self._train_dict["episodes"] += 1
+        if not self.args.eval:
+            # Update number of elapsed episdoes
+            self._train_dict["episodes"] += 1
 
-        # Add episode experiences
-        self._add_stored_exs()
+            # Add the last reward of the episode
+            self._train_dict["final_rewards"].append(self._ex_buffer[-1].reward)
 
-    def save(self, final_reward):
+            # Add episode experiences
+            self._add_stored_exs()
+
+    def save(self):
         """Save the models."""
-        self._train_dict["final_rewards"].append(final_reward)
-
         model_dict = {
             "sparrl_net" : self._sparrl_net.state_dict(),
             "sparrl_net_tgt" : self._sparrl_net_tgt.state_dict(),
@@ -84,7 +83,6 @@ class RLAgent(Agent):
 
         with open(self._train_dict_file, "w") as f:
             json.dump(self._train_dict, f)
-        
 
         # Save the experience replay
         self._memory.save()
@@ -102,11 +100,11 @@ class RLAgent(Agent):
             self._train_dict = json.load(f)
 
     def add_ex(self, ex):
-        """Add an time step of experience."""
+        """Add a time step of experience."""
         if not self.args.eval and self._memory:
             ex.is_expert = self._should_add_expert_ex
-            self._exp_buffer.append(ex)
-
+            self._ex_buffer.append(ex)
+ 
     def _update_target(self):
         """Perform soft update of the target policy."""
         for tgt_sparrl_param, sparrl_param in zip(self._sparrl_net_tgt.parameters(), self._sparrl_net.parameters()):
@@ -137,50 +135,53 @@ class RLAgent(Agent):
     def _add_stored_exs(self):
         """Add experiences stored in temporary buffer into replay memory.
         
-        This method makes the assumption that self._exp_buffer only contains experiences
+        This method makes the assumption that self._ex_buffer only contains experiences
         from the same episode.
         """
+        self._sparrl_net.eval()
         rewards = torch.zeros(self.args.dqn_steps)
-        for i in reversed(range(len(self._exp_buffer))):
-            rewards[0] = self._exp_buffer[i].reward
+        for i in reversed(range(len(self._ex_buffer))):
+            rewards[0] = self._ex_buffer[i].reward
             cur_gamma = self.args.gamma
 
             # Update the experience reward to be the n-step return
-            if i + self.args.dqn_steps < len(self._exp_buffer):
-                self._exp_buffer[i].reward = rewards.dot(self._gam_arr)
-                self._exp_buffer[i].next_state = self._exp_buffer[i + self.args.dqn_steps].state
+            if i + self.args.dqn_steps < len(self._ex_buffer):
+                self._ex_buffer[i].reward = rewards.dot(self._gam_arr)
+                self._ex_buffer[i].next_state = self._ex_buffer[i + self.args.dqn_steps].state
                 cur_gamma = cur_gamma ** self.args.dqn_steps
 
             # Update gamma based on n-step return
-            self._exp_buffer[i].gamma = cur_gamma
+            self._ex_buffer[i].gamma = cur_gamma
 
             with torch.no_grad():
                 # Get the Q-value for the state, action pair
-                q_val = self._sparrl_net(self._exp_buffer[i].state)[self._exp_buffer[i].action]
+                q_val = self._sparrl_net(self._ex_buffer[i].state)[self._ex_buffer[i].action]
                 
-                if self._exp_buffer[i].next_state is not None:
+                if self._ex_buffer[i].next_state is not None:
                     # Get the valid action for next state that maximizes the q-value
-                    valid_actions = self._get_valid_edges(self._exp_buffer[i].next_state.subgraph[0])
-                    q_next = self._sparrl_net(self._exp_buffer[i].next_state)
+                    valid_actions = self._get_valid_edges(self._ex_buffer[i].next_state.subgraph[0])
+                    q_next = self._sparrl_net(self._ex_buffer[i].next_state)
 
                     next_action = self._sample_action(q_next[valid_actions], argmax=True)
                     next_action = valid_actions[next_action] 
 
                     # Compute TD target based on target function q-value for next state
-                    q_next_target = self._sparrl_net_tgt(self._exp_buffer[i].next_state)[next_action]
-                    td_target = self._exp_buffer[i].reward + self._exp_buffer[i].gamma *  q_next_target
+                    q_next_target = self._sparrl_net_tgt(self._ex_buffer[i].next_state)[next_action]
+                    td_target = self._ex_buffer[i].reward + self._ex_buffer[i].gamma *  q_next_target
 
                 else:
-                    td_target = self._exp_buffer[i].reward
+                    td_target = self._ex_buffer[i].reward
 
             td_error = td_target - q_val
-            self._memory.add(self._exp_buffer[i], td_error)      
+            self._memory.add(self._ex_buffer[i], td_error)      
 
             # Shift the rewards down
             rewards = rewards.roll(1)
 
         # Clear the experiences from the experince buffer
-        self._exp_buffer.clear()
+        self._ex_buffer.clear()
+
+        self._sparrl_net.train()
 
 
     def _unwrap_exs(self, exs: list):
@@ -188,16 +189,16 @@ class RLAgent(Agent):
         subgraphs = torch.zeros(self.args.batch_size, self.args.subgraph_len*2, device=device, dtype=torch.int32)
         global_stats = torch.zeros(self.args.batch_size, 1, NUM_GLOBAL_STATS, device=device)
         local_stats = torch.zeros(self.args.batch_size, self.args.subgraph_len*2, NUM_LOCAL_STATS, device=device)
-        subgraph_mask = torch.zeros(self.args.batch_size, self.args.subgraph_len, device=device)
+        masks = torch.zeros(self.args.batch_size, 1, 1, self.args.subgraph_len + 1, device=device)
 
         actions = []
         rewards = torch.zeros(self.args.batch_size, device=device)
         next_subgraphs = torch.zeros(self.args.batch_size, self.args.subgraph_len*2, device=device, dtype=torch.int32)
         next_global_stats = torch.zeros(self.args.batch_size, 1, NUM_GLOBAL_STATS, device=device)
         next_local_stats = torch.zeros(self.args.batch_size, self.args.subgraph_len*2, NUM_LOCAL_STATS, device=device)
-        next_subgraph_mask = torch.zeros(self.args.batch_size, self.args.subgraph_len, device=device)
+        next_masks = torch.zeros(self.args.batch_size, 1, 1, self.args.subgraph_len + 1, device=device)
         
-        next_state_mask = torch.zeros(self.args.batch_size, device=device)
+        next_state_mask = torch.zeros(self.args.batch_size, device=device, dtype=torch.bool)
         is_experts = torch.zeros(self.args.batch_size, dtype=torch.bool, device=device)
         gammas = torch.zeros(self.args.batch_size, device=device)
 
@@ -206,7 +207,7 @@ class RLAgent(Agent):
             # Create subgraph mask if edges less than subgraph length
             if ex.state.subgraph.shape[1]//2 < self.args.subgraph_len:
                 # Set edges that are null to 1 to mask out
-                subgraph_mask[i, ex.state.subgraph.shape[1]:] = 1
+                masks[i] = ex.state.mask
 
             local_stats[i, :ex.state.local_stats.shape[1]] = ex.state.local_stats
             subgraphs[i, :ex.state.subgraph.shape[1]], global_stats[i], local_stats[i, :ex.state.local_stats.shape[1]] = ex.state.subgraph, ex.state.global_stats, ex.state.local_stats
@@ -217,22 +218,25 @@ class RLAgent(Agent):
             gammas[i] = ex.gamma
             if ex.next_state is not None:
                 next_subgraphs[i, :ex.next_state.subgraph.shape[1]], next_global_stats[i], local_stats[i, :ex.next_state.local_stats.shape[1]] = ex.next_state.subgraph, ex.next_state.global_stats, ex.next_state.local_stats 
-                next_state_mask[i] = 1
+                next_state_mask[i] = True
 
                 # Create subgraph mask if edges less than subgraph length
                 if ex.next_state.subgraph.shape[1]//2 < self.args.subgraph_len:
                     # Set edges that are null to 1 to mask out
-                    next_subgraph_mask[i, ex.next_state.subgraph.shape[1]:] = 1
+                    next_masks[i] = ex.next_state.mask
 
-        states = State(subgraphs, global_stats, local_stats)
+        states = State(subgraphs, global_stats, local_stats, masks)
         
 
-        # Get nonempty states
-        nonzero_next_states = next_state_mask.nonzero().flatten()
-        next_states = State(next_subgraphs[nonzero_next_states], next_global_stats[nonzero_next_states], next_local_stats[nonzero_next_states])
-        # next_state_mask = next_state_mask[nonzero_next_states]
-        next_subgraph_mask = next_subgraph_mask[nonzero_next_states]
-        return states, subgraph_mask, actions, rewards, next_states, next_state_mask, next_subgraph_mask, is_experts, gammas
+        # Get nonempty next states
+        next_states = State(
+            next_subgraphs[next_state_mask],
+            next_global_stats[next_state_mask],
+            next_local_stats[next_state_mask],
+            next_masks[next_state_mask])
+
+        next_masks = next_masks[next_state_mask]
+        return states, actions, rewards, next_states, next_state_mask, is_experts, gammas
 
     def train(self) -> float:
         """Train the model over a sampled batch of experiences.
@@ -240,28 +244,25 @@ class RLAgent(Agent):
         Returns:
             the loss for the batch
         """
-
         is_ws, exs, indices = self._memory.sample(self.args.batch_size, self._train_dict["update_step"])
         td_targets = torch.zeros(self.args.batch_size, device=device)
         
-        states, subgraph_mask, actions, rewards, next_states, next_state_mask, next_subgraph_mask, is_experts, gammas = self._unwrap_exs(exs)
+        states, actions, rewards, next_states, next_state_mask, is_experts, gammas = self._unwrap_exs(exs)
 
         # Select the q-value for every state
         actions = torch.tensor(actions, dtype=torch.int64, device=device)
 
-        q_vals_matrix = self._sparrl_net(states, subgraph_mask)
+        q_vals_matrix = self._sparrl_net(states)
 
         q_vals = q_vals_matrix.gather(1, actions.unsqueeze(1)).squeeze(1)
 
         # Run policy on next states
         q_next = self._sparrl_net(
-            next_states,
-            next_subgraph_mask).detach()
+            next_states).detach()
 
 
         q_next_target = self._sparrl_net_tgt(
-            next_states,
-            next_subgraph_mask).detach()
+            next_states).detach()
 
         # index used for getting the next nonempty next state
         q_next_idx = 0
@@ -311,7 +312,7 @@ class RLAgent(Agent):
         self._memory.update_priorities(indices, td_errors.detach().abs(), is_experts)
         loss = loss
         print("loss", loss)
-        print("L2 LOSS", torch.mean(td_errors ** 2  *  is_ws))
+        #print("L2 LOSS", torch.mean(td_errors ** 2  *  is_ws))
         print("expert_margin_loss", expert_margin_loss* self.args.expert_lam)
         
         loss += expert_margin_loss * self.args.expert_lam
@@ -349,26 +350,35 @@ class RLAgent(Agent):
 
         return float(loss.detach())
 
-
-    def __call__(self, state, mask=None) -> int:
+    def __call__(self, state, argmax=False) -> int:
         """Make a sparsification decision based on the state.
 
         Returns:
             an edge index.
         """
+        batch_size = state.subgraph.shape[0] 
 
         # Set for when experience is added
-        self._should_add_expert_ex = self._train_dict["episodes"] < self.args.expert_episodes
+        self._should_add_expert_ex = self._train_dict["episodes"] < (self.args.expert_episodes // self.args.workers)
 
-        if self._should_add_expert_ex:
+        if self._should_add_expert_ex and not self.args.eval:
             # Run through expert policy
-            edge_idx = self._expert_agent(state)
+            action = self._expert_agent(state)
         else:
             # Get the q-values for the state
-            q_vals = self._sparrl_net(state, mask)
+            q_vals = self._sparrl_net(state)
 
             # Sample an action (i.e., edge to prune)
-            edge_idx = self._sample_action(q_vals, self.args.eval)
+            if batch_size > 1:
+                action = []
+                for i in range(batch_size):
+                    valid_actions = self._get_valid_edges(state.subgraph[i])
+                    cur_action = int(self._sample_action(q_vals[i][valid_actions], argmax))
+                    action.append(int(valid_actions[cur_action])) 
+            else:
+                valid_actions = self._get_valid_edges(state.subgraph[0])
+                action = self._sample_action(q_vals[valid_actions], argmax)
+                action = int(valid_actions[action])
 
-        return edge_idx
+        return action
         

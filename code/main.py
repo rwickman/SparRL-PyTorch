@@ -6,6 +6,7 @@ from agents.expert_agent import ExpertAgent
 from replay_memory import PrioritizedExReplay
 from results_manager import ResultsManager
 from graph import Graph
+from agent_manager import AgentManager
 
 def main(args):
     if not os.path.exists(args.save_dir):
@@ -14,19 +15,15 @@ def main(args):
     memory = PrioritizedExReplay(args)
     graph = Graph(args)
     agent = RLAgent(args, memory, graph.num_nodes, ExpertAgent(args, graph))
-    # if args.expert_episodes > 0:
-    #     # Create with expert agent
-        
-    # else:
-    #     agent = RLAgent(args, memory, graph.num_nodes)
-    
-    env = Environment(args, agent, graph)
     
     if args.eval:
+        env = Environment(args, agent, graph)
         results_man = ResultsManager(args, agent, env)
         results_man.eval()
     else:
-        env.run()
+        del graph
+        agent_man = AgentManager(args, agent)
+        agent_man.run()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -81,7 +78,7 @@ if __name__ == "__main__":
         help="Size of node and edge embeddings.")
     net_args.add_argument("--hidden_size", type=int, default=256,
         help="Number of hidden units in each FC layer for the SparRL network.")
-    net_args.add_argument("--drop_rate", type=float, default=0.05,
+    net_args.add_argument("--drop_rate", type=float, default=0.0,
         help="Dropout rate.")
     net_args.add_argument("--num_enc_layers", type=int, default=3,
         help="Number of Transformer Encoder layers.")
@@ -128,16 +125,26 @@ if __name__ == "__main__":
     il_args.add_argument("--expert_episodes", type=int, default=0.0,
                     help="Number of expert episodes.")
                     
-    
+    ec_args = parser.add_argument_group("Expert Control")
+    ec_args.add_argument("--ec_episodes", type=int, default=8,
+                    help="Number of expert control episodes.")
+    ec_args.add_argument("--ec_prune", type=int, default=32,
+                    help="Number edge to prune for expert control.")
+    ec_args.add_argument("--ec_sig_val", type=int, default=32,
+                    help="Number edge to prune for expert control.")
 
 
     eval_args = parser.add_argument_group("Evaluation")
-    eval_args.add_argument("--eval_episodes", type=int, default=2048,
-            help="Number of episodes to evaluate on.")
+    # eval_args.add_argument("--eval_episodes", type=int, default=32,
+    #         help="Number of episodes to evaluate on.")
     eval_args.add_argument("--eval", action="store_true",
             help="Evaluate.")
-    eval_args.add_argument("--T_eval", type=int, default=64,
-            help="Number of edges to prune for evaluation.")
+    # eval_args.add_argument("--T_eval", type=int, default=64,
+    #         help="Number of edges to prune for evaluation.")
 
+
+    mp_args = parser.add_argument_group("Multiprocess")    
+    mp_args.add_argument("--workers", type=int, default=1,
+            help="Number of workers to use for training.")
 
     main(parser.parse_args())
