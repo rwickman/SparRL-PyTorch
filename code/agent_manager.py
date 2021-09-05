@@ -89,7 +89,7 @@ class AgentManager:
             global_stats[i] = state.global_stats
             local_stats[i, :state.local_stats.shape[1]] = state.local_stats
             masks[i] = state.mask
-
+        
         return State(subgraphs, global_stats, local_stats, masks)
 
     def run(self):
@@ -140,5 +140,7 @@ class AgentManager:
 
             # Save the models
             print("SAVING")
-            self._rl_agent.save()
+            if e_i % 8 == 0:
+                self._rl_agent.save()
             print("DONE SAVING")
+        self._rl_agent.save()

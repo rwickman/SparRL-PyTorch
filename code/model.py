@@ -17,7 +17,7 @@ class NodeEncoder(nn.Module):
         self.fc_1 = nn.Linear(self.args.hidden_size + NUM_LOCAL_STATS, self.args.hidden_size)
         self.fc_2 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
 
-        self.norm_1 = nn.LayerNorm(self.args.emb_size, eps=1e-7)
+        #self.norm_1 = nn.LayerNorm(self.args.emb_size, eps=1e-7)
         self.dropout_1 = nn.Dropout(self.args.drop_rate)
         
         
@@ -28,7 +28,7 @@ class NodeEncoder(nn.Module):
         # Combine node embeddings with current local statistics
         node_embs = self.fc_1(
             torch.cat((node_embs, local_stats), -1))
-        node_embs = self.norm_1(node_embs)
+        #node_embs = self.norm_1(node_embs)
         node_embs = F.relu(node_embs)
         node_embs = self.dropout_1(node_embs)
 
@@ -49,7 +49,7 @@ class EdgeEncoder(nn.Module):
             self.args.emb_size,
             kernel_size=2,
             stride=2)
-        self.norm_1 = nn.LayerNorm(self.args.emb_size, eps=1e-7)
+        #self.norm_1 = nn.LayerNorm(self.args.emb_size, eps=1e-7)
         self.dropout_1 = nn.Dropout(self.args.drop_rate)
 
         # Used produce to produce the final edge embedding
@@ -58,8 +58,8 @@ class EdgeEncoder(nn.Module):
     def forward(self, node_embs: torch.Tensor):
         # Combine the node embeddings to create edge embeddings
         edge_embs = self.edge_conv1d(node_embs.transpose(1,2))
-        edge_embs = self.norm_1(edge_embs.transpose(1,2))
-        edge_embs = F.relu(edge_embs)
+        #edge_embs = self.norm_1(edge_embs.transpose(1,2))
+        edge_embs = F.relu(edge_embs.transpose(1,2))
         edge_embs = self.dropout_1(edge_embs)
         
         # Create the final edge embeddings
@@ -76,12 +76,12 @@ class GlobalStatisticsEncoder(nn.Module):
         self.fc_1 = nn.Linear(NUM_GLOBAL_STATS, self.args.hidden_size)
         self.fc_2 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
 
-        self.norm_1 = nn.LayerNorm(self.args.emb_size, eps=1e-7)
+        #self.norm_1 = nn.LayerNorm(self.args.emb_size, eps=1e-7)
         self.dropout_1 = nn.Dropout(self.args.drop_rate)
 
     def forward(self, global_stats):
         global_stats_emb = self.fc_1(global_stats)
-        global_stats_emb = self.norm_1(global_stats_emb)
+        #global_stats_emb = self.norm_1(global_stats_emb)
         global_stats_emb = F.relu(global_stats_emb)
         global_stats_emb = self.dropout_1(global_stats_emb)
 

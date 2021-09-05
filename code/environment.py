@@ -92,9 +92,10 @@ class Environment:
         subgraph = self.sample_subgraph(subgraph_len)
 
         # Create global statistics
-        prune_left = T-t
-        num_edges_left = self._graph.get_num_edges()
-        global_stats = torch.log(torch.tensor([[[prune_left, num_edges_left, num_preprune + 1]]], device=self._device, dtype=torch.float32))
+        prune_left = np.log(T-t)
+        num_edges_left = np.log(self._graph.get_num_edges())
+        preprune_pct = num_preprune / self._org_num_edges
+        global_stats = torch.tensor([[[prune_left, num_edges_left, preprune_pct]]], device=self._device, dtype=torch.float32)
         
         # Create local node statistics
         node_ids = []

@@ -33,7 +33,7 @@ if __name__ == "__main__":
             help="Number of episodes to train on.")
     parser.add_argument("--train_iter", type=int, default=3,
                     help="Number of gradient update steps after each episode.")
-    parser.add_argument("--lr", type=float, default=6e-4,
+    parser.add_argument("--lr", type=float, default=1e-3,
                     help="Learning rate.")
     parser.add_argument("--min_lr", type=float, default=1e-6,
                     help="Minimum learning rate.")
@@ -116,7 +116,7 @@ if __name__ == "__main__":
     il_args = parser.add_argument_group("Imitation Learning")
     il_args.add_argument("--expert_lam", type=float, default=0.01,
                     help="Weight of the expert margin classification loss.")
-    il_args.add_argument("--expert_margin", type=float, default=0.01,
+    il_args.add_argument("--expert_margin", type=float, default=0.001,
                     help="Margin value used for IL margin classification loss.") 
     il_args.add_argument("--expert_epsilon", type=float, default=0.0,
                     help="Epsilon value added to priority value when using PER.")
@@ -133,15 +133,9 @@ if __name__ == "__main__":
     ec_args.add_argument("--ec_sig_val", type=int, default=32,
                     help="Number edge to prune for expert control.")
 
-
     eval_args = parser.add_argument_group("Evaluation")
-    # eval_args.add_argument("--eval_episodes", type=int, default=32,
-    #         help="Number of episodes to evaluate on.")
     eval_args.add_argument("--eval", action="store_true",
             help="Evaluate.")
-    # eval_args.add_argument("--T_eval", type=int, default=64,
-    #         help="Number of edges to prune for evaluation.")
-
 
     mp_args = parser.add_argument_group("Multiprocess")    
     mp_args.add_argument("--workers", type=int, default=1,

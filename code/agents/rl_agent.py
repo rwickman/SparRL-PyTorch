@@ -61,8 +61,8 @@ class RLAgent(Agent):
 
     def reset(self):
         if not self.args.eval:
-            # Update number of elapsed episdoes
-            self._train_dict["episodes"] += 1
+            # Update number of elapsed episodes
+            self._train_dict["episodes"] += self.args.workers
 
             # Add the last reward of the episode
             self._train_dict["final_rewards"].append(self._ex_buffer[-1].reward)
@@ -217,7 +217,9 @@ class RLAgent(Agent):
             is_experts[i] = ex.is_expert
             gammas[i] = ex.gamma
             if ex.next_state is not None:
-                next_subgraphs[i, :ex.next_state.subgraph.shape[1]], next_global_stats[i], local_stats[i, :ex.next_state.local_stats.shape[1]] = ex.next_state.subgraph, ex.next_state.global_stats, ex.next_state.local_stats 
+                next_subgraphs[i, :ex.next_state.subgraph.shape[1]] = ex.next_state.subgraph
+                next_global_stats[i] = ex.next_state.global_stats
+                next_local_stats[i, :ex.next_state.local_stats.shape[1]] = ex.next_state.local_stats
                 next_state_mask[i] = True
 
                 # Create subgraph mask if edges less than subgraph length
@@ -255,6 +257,12 @@ class RLAgent(Agent):
         q_vals_matrix = self._sparrl_net(states)
 
         q_vals = q_vals_matrix.gather(1, actions.unsqueeze(1)).squeeze(1)
+
+        # print("actions", actions, actions.shape)
+        # print("states", states, states.subgraph.shape)
+        # print("q_vals_matrix", q_vals_matrix, q_vals_matrix.shape)
+        # print("q_vals", q_vals, q_vals.shape)
+        # print("next_states", next_states, next_states.subgraph.shape, "\n\n")
 
         # Run policy on next states
         q_next = self._sparrl_net(
@@ -323,11 +331,14 @@ class RLAgent(Agent):
             self._sparrl_net.parameters(),
             self.args.max_grad_norm)
 
+        #print("node_enc.node_embs.weight.grad", self._sparrl_net.node_enc.node_embs.weight.grad)
+        #print("node_enc.node_embs.weight.grad", self._sparrl_net_tgt.node_enc.node_embs.weight.grad)
 
         # Train model
         self._optim.step()
 
         # Check if using decay and min lr not reached
+        print("LR", self._optim.param_groups[0]["lr"])
         if not self.args.no_lr_decay and self._optim.param_groups[0]["lr"] > self.args.min_lr:
             # If so, decay learning rate
             self._lr_scheduler.step()
@@ -359,7 +370,7 @@ class RLAgent(Agent):
         batch_size = state.subgraph.shape[0] 
 
         # Set for when experience is added
-        self._should_add_expert_ex = self._train_dict["episodes"] < (self.args.expert_episodes // self.args.workers)
+        self._should_add_expert_ex = self._train_dict["episodes"] < self.args.expert_episodes
 
         if self._should_add_expert_ex and not self.args.eval:
             # Run through expert policy
