@@ -29,7 +29,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--episodes", type=int, default=2048,
             help="Number of episodes to train on.")
-    parser.add_argument("--batch_size", type=int, default=32,
+    parser.add_argument("--batch_size", type=int, default=64,
             help="Number of episodes to train on.")
     parser.add_argument("--train_iter", type=int, default=3,
                     help="Number of gradient update steps after each episode.")
@@ -65,7 +65,7 @@ if __name__ == "__main__":
     #     help="n value used for sampling number of edges to prune per episode from beta-binomial distribution.")
     env_args.add_argument("--T_alpha", type=float, default=1.0,
         help="Alpha value used for sampling number of edges to prune per episode from beta-binomial distribution.")
-    env_args.add_argument("--T_beta", type=float, default=5.0,
+    env_args.add_argument("--T_beta", type=float, default=2.0,
         help="Beta value used for sampling number of edges to prune per episode from beta-binomial distribution.")
     env_args.add_argument("--preprune_pct", type=float, default=0.0,
         help="Percentage of edges to preprune.")
@@ -94,7 +94,7 @@ if __name__ == "__main__":
                     help="Minimum epsilon value used for epsilon-greedy in DQN.")
     dqn_args.add_argument("--epsilon_decay", type=int, default=1024,
                     help="Epsilon decay step used for decaying the epsilon value in epsilon-greedy exploration.")
-    dqn_args.add_argument("--dqn_steps", type=int, default=1,
+    dqn_args.add_argument("--dqn_steps", type=int, default=10,
                     help="Number of steps to use for multistep DQN.")
     dqn_args.add_argument("--tgt_tau", type=float, default=0.05,
                     help="The tau value to control the update rate of the target DQN parameters.")
@@ -128,10 +128,10 @@ if __name__ == "__main__":
     ec_args = parser.add_argument_group("Expert Control")
     ec_args.add_argument("--ec_episodes", type=int, default=8,
                     help="Number of expert control episodes.")
-    ec_args.add_argument("--ec_prune", type=int, default=32,
+    ec_args.add_argument("--T_ec", type=int, default=32,
                     help="Number edge to prune for expert control.")
-    ec_args.add_argument("--ec_sig_val", type=int, default=32,
-                    help="Number edge to prune for expert control.")
+    ec_args.add_argument("--ec_sig_val", type=float, default=0.1,
+                    help="Expert control signddficant value threshold.")
 
     eval_args = parser.add_argument_group("Evaluation")
     eval_args.add_argument("--eval", action="store_true",

@@ -11,6 +11,7 @@ from replay_memory import PrioritizedExReplay
 from agents.rl_agent import RLAgent
 from agents.storage import ActionMessage, State
 from conf import *
+#from expert_control import ExpertControl
 
 mp.set_start_method("spawn", force=True)
 mp.set_sharing_strategy('file_system')
@@ -27,7 +28,7 @@ class AgentManager:
     def __init__(self, args, rl_agent: RLAgent):
         self.args = args
         self._rl_agent = rl_agent
-        
+        #self._expert_control = ExpertControl(self.args)
         self._init_workers()
     
     def _init_workers(self):
@@ -123,6 +124,7 @@ class AgentManager:
                     
                     # Get actions
                     with torch.no_grad():
+                        self._rl_agent.reset_noise()
                         action = self._rl_agent(states)
                     
                     if len(nonterm_p_ids) == 1:
@@ -136,11 +138,18 @@ class AgentManager:
             if self._rl_agent.is_ready_to_train:
                 # Train the model
                 for _ in range(self.args.train_iter):
+                    self._rl_agent.reset_noise()
                     self._rl_agent.train()
 
             # Save the models
             print("SAVING")
+            
+            #print("Should Trigger EC:", self._expert_control._test_mean_reward(self._rl_agent))
+            
             if e_i % 8 == 0:
                 self._rl_agent.save()
             print("DONE SAVING")
+        
+        print("SAVING")
         self._rl_agent.save()
+        print("DONE SAVING")

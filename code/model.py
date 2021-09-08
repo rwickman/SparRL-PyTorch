@@ -1,9 +1,65 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import math
 
 from transformer import Encoder
 from conf import *
+
+
+class NoisyLinear(nn.Module):
+    def __init__(self, args, in_features, out_features, std_init=0.4):
+        super().__init__()
+        self.args = args
+        
+        self.in_features  = in_features
+        self.out_features = out_features
+        self.std_init     = std_init
+        
+        self.weight_mu    = nn.Parameter(torch.FloatTensor(out_features, in_features))
+        self.weight_sigma = nn.Parameter(torch.FloatTensor(out_features, in_features))
+        self.register_buffer('weight_epsilon', torch.FloatTensor(out_features, in_features))
+        
+        self.bias_mu    = nn.Parameter(torch.FloatTensor(out_features))
+        self.bias_sigma = nn.Parameter(torch.FloatTensor(out_features))
+        self.register_buffer('bias_epsilon', torch.FloatTensor(out_features))
+        
+        if not self.args.load:
+            self.reset_parameters()
+
+        self.reset_noise()
+    
+    def forward(self, x):
+        if self.training: 
+            weight = self.weight_mu + self.weight_sigma.mul(self.weight_epsilon)
+            bias   = self.bias_mu   + self.bias_sigma.mul(self.bias_epsilon)
+        else:
+            weight = self.weight_mu
+            bias   = self.bias_mu
+        
+        return F.linear(x, weight, bias)
+    
+    def reset_parameters(self):
+        mu_range = 1 / math.sqrt(self.weight_mu.size(1))
+        
+        self.weight_mu.data.uniform_(-mu_range, mu_range)
+        self.weight_sigma.data.fill_(self.std_init / math.sqrt(self.weight_sigma.size(1)))
+        
+        self.bias_mu.data.uniform_(-mu_range, mu_range)
+        self.bias_sigma.data.fill_(self.std_init / math.sqrt(self.bias_sigma.size(0)))
+    
+    def reset_noise(self):
+        epsilon_in  = self._scale_noise(self.in_features)
+        epsilon_out = self._scale_noise(self.out_features)
+        
+        self.weight_epsilon.copy_(epsilon_out.ger(epsilon_in))
+        self.bias_epsilon.copy_(self._scale_noise(self.out_features))
+
+
+    def _scale_noise(self, size):
+        x = torch.randn(size)
+        x = x.sign().mul(x.abs().sqrt())
+        return x
 
 class NodeEncoder(nn.Module):
     """Create node embedding using local statistics."""
@@ -12,12 +68,12 @@ class NodeEncoder(nn.Module):
         self.args = args
         self.num_nodes = num_nodes + 1
         
-        self.node_embs = nn.Embedding(self.num_nodes+1, self.args.emb_size) 
+        self.node_embs = nn.Embedding(self.num_nodes+1, self.args.hidden_size) 
         
         self.fc_1 = nn.Linear(self.args.hidden_size + NUM_LOCAL_STATS, self.args.hidden_size)
         self.fc_2 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
 
-        #self.norm_1 = nn.LayerNorm(self.args.emb_size, eps=1e-7)
+        #self.norm_1 = nn.LayerNorm(self.args.hidden_size, eps=1e-7)
         self.dropout_1 = nn.Dropout(self.args.drop_rate)
         
         
@@ -45,15 +101,15 @@ class EdgeEncoder(nn.Module):
 
         # Used to combine the embeddings
         self.edge_conv1d = nn.Conv1d(
-            self.args.emb_size,
-            self.args.emb_size,
+            self.args.hidden_size,
+            self.args.hidden_size,
             kernel_size=2,
             stride=2)
-        #self.norm_1 = nn.LayerNorm(self.args.emb_size, eps=1e-7)
+        #self.norm_1 = nn.LayerNorm(self.args.hidden_size, eps=1e-7)
         self.dropout_1 = nn.Dropout(self.args.drop_rate)
 
         # Used produce to produce the final edge embedding
-        self.edge_fc = nn.Linear(self.args.emb_size, self.args.emb_size)
+        self.edge_fc = nn.Linear(self.args.hidden_size, self.args.hidden_size)
 
     def forward(self, node_embs: torch.Tensor):
         # Combine the node embeddings to create edge embeddings
@@ -76,7 +132,7 @@ class GlobalStatisticsEncoder(nn.Module):
         self.fc_1 = nn.Linear(NUM_GLOBAL_STATS, self.args.hidden_size)
         self.fc_2 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
 
-        #self.norm_1 = nn.LayerNorm(self.args.emb_size, eps=1e-7)
+        #self.norm_1 = nn.LayerNorm(self.args.hidden_size, eps=1e-7)
         self.dropout_1 = nn.Dropout(self.args.drop_rate)
 
     def forward(self, global_stats):
@@ -104,8 +160,17 @@ class SparRLNet(nn.Module):
 
         self.edge_enc = EdgeEncoder(self.args)
 
-        # Mapping to q-values for pruning edges
-        self.q_fc_1 = nn.Linear(self.args.hidden_size, 1)
+        # Mapping to q-values for pruning edges        
+        #self.q_fc_1 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
+        #self.q_fc_2 = nn.Linear(self.args.hidden_size, 1)
+        self.q_fc_1 = NoisyLinear(self.args, self.args.hidden_size, self.args.hidden_size)
+        self.q_fc_2 = NoisyLinear(self.args, self.args.hidden_size, 1)
+
+    def reset_noise(self):
+        pass
+        # self.q_fc_1.reset_noise()
+        # self.q_fc_2.reset_noise()
+
 
     def forward(self, state) -> torch.Tensor:
         batch_size = state.subgraph.shape[0]
@@ -121,12 +186,19 @@ class SparRLNet(nn.Module):
         
         # Perform MHA over edge embeddings (batch size, # edges, hidden size)
         embs = self.edge_mha_enc(
-            torch.cat((edge_embs, global_stats_emb), 1), state.mask)
+            torch.cat((global_stats_emb, edge_embs), 1), state.mask)
 
         # Pass the edge embeddings through FC to get Q-values
-        q_vals = self.q_fc_1(embs[:, :-1])
+        q_vals = F.relu(self.q_fc_1(embs[:, 1:]))
+        q_vals = self.q_fc_2(q_vals)
+        
 
         if batch_size == 1:
             return q_vals.view(-1)
         else:
+            # print(state)
+            # print("q_vals", q_vals)
+            # print("q_vals.shape", q_vals.shape)
+            # print("embs.shape", embs.shape, "\n\n")
+            
             return q_vals.view(q_vals.shape[0], q_vals.shape[1])

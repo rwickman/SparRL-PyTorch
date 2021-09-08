@@ -135,9 +135,9 @@ class Environment:
         # Create the mask
         mask = torch.zeros(1, 1, 1, self.args.subgraph_len + 1, device=self._device)
         # Mask out null edges (if this subgraph is shorter than expected)
-        mask[0, 0, 0, subgraph_len:] = 1
-        # Don't mask out the global stats
-        mask[0, 0, 0, -1] = 0
+        mask[0, 0, 0, subgraph_len+1:] = 1
+        # # Don't mask out the global stats
+        # mask[0, 0, 0, -1] = 0
         
         return State(subgraph, global_stats, local_stats, mask)
 

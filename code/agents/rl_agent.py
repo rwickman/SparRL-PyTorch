@@ -39,11 +39,16 @@ class RLAgent(Agent):
             lr_lambda=lambda e: self.args.lr_gamma)
         
         self._gam_arr = self._create_gamma_arr()
-        self._model_file = os.path.join(self.args.save_dir, "sparrl_net")
+        self._model_file = os.path.join(self.args.save_dir, "sparrl_net.pt")
         self._train_dict_file = os.path.join(self.args.save_dir, "train_dict.json")
 
         if self.args.load:
             self.load()
+
+    def reset_noise(self):
+        self._sparrl_net.reset_noise()
+        self._sparrl_net_tgt.reset_noise()
+        
 
 
     @property
@@ -130,8 +135,6 @@ class RLAgent(Agent):
 
         return int(action)
 
-
-
     def _add_stored_exs(self):
         """Add experiences stored in temporary buffer into replay memory.
         
@@ -181,8 +184,6 @@ class RLAgent(Agent):
         # Clear the experiences from the experince buffer
         self._ex_buffer.clear()
 
-        self._sparrl_net.train()
-
 
     def _unwrap_exs(self, exs: list):
         """Extract the states, actions and rewards from the experiences."""
@@ -205,9 +206,11 @@ class RLAgent(Agent):
         # Unwrap the experiences
         for i, ex in enumerate(exs):
             # Create subgraph mask if edges less than subgraph length
-            if ex.state.subgraph.shape[1]//2 < self.args.subgraph_len:
+            #if ex.state.subgraph.shape[1]//2 < self.args.subgraph_len:
                 # Set edges that are null to 1 to mask out
-                masks[i] = ex.state.mask
+            masks[i] = ex.state.mask
+            # print("masks[i]", masks[i])
+            # print("ex.state.mask", ex.state.mask)
 
             local_stats[i, :ex.state.local_stats.shape[1]] = ex.state.local_stats
             subgraphs[i, :ex.state.subgraph.shape[1]], global_stats[i], local_stats[i, :ex.state.local_stats.shape[1]] = ex.state.subgraph, ex.state.global_stats, ex.state.local_stats
@@ -223,9 +226,9 @@ class RLAgent(Agent):
                 next_state_mask[i] = True
 
                 # Create subgraph mask if edges less than subgraph length
-                if ex.next_state.subgraph.shape[1]//2 < self.args.subgraph_len:
+                # if ex.next_state.subgraph.shape[1]//2 < self.args.subgraph_len:
                     # Set edges that are null to 1 to mask out
-                    next_masks[i] = ex.next_state.mask
+                next_masks[i] = ex.next_state.mask
 
         states = State(subgraphs, global_stats, local_stats, masks)
         
@@ -263,14 +266,15 @@ class RLAgent(Agent):
         # print("q_vals_matrix", q_vals_matrix, q_vals_matrix.shape)
         # print("q_vals", q_vals, q_vals.shape)
         # print("next_states", next_states, next_states.subgraph.shape, "\n\n")
+        # print("\n\n")
 
         # Run policy on next states
-        q_next = self._sparrl_net(
-            next_states).detach()
+        with torch.no_grad():
+            q_next = self._sparrl_net(
+                next_states)
 
-
-        q_next_target = self._sparrl_net_tgt(
-            next_states).detach()
+            q_next_target = self._sparrl_net_tgt(
+                next_states)
 
         # index used for getting the next nonempty next state
         q_next_idx = 0
@@ -315,10 +319,9 @@ class RLAgent(Agent):
         # Compute L1 loss
         td_errors = td_targets  - q_vals
         loss = torch.mean(td_errors.abs()  *  is_ws)
-
+        #loss = torch.mean(td_errors ** 2  *  is_ws)
 
         self._memory.update_priorities(indices, td_errors.detach().abs(), is_experts)
-        loss = loss
         print("loss", loss)
         #print("L2 LOSS", torch.mean(td_errors ** 2  *  is_ws))
         print("expert_margin_loss", expert_margin_loss* self.args.expert_lam)
@@ -327,12 +330,15 @@ class RLAgent(Agent):
         loss.backward()
         
         # Clip gradient
+        # print("node_enc.node_embs.weight.grad", self._sparrl_net.node_enc.node_embs.weight.grad)
+        # print("node_enc.node_embs.weight.grad", self._sparrl_net_tgt.node_enc.node_embs.weight.grad)
+
         nn.utils.clip_grad.clip_grad_norm_(
             self._sparrl_net.parameters(),
             self.args.max_grad_norm)
 
-        #print("node_enc.node_embs.weight.grad", self._sparrl_net.node_enc.node_embs.weight.grad)
-        #print("node_enc.node_embs.weight.grad", self._sparrl_net_tgt.node_enc.node_embs.weight.grad)
+        # print("node_enc.node_embs.weight.grad", self._sparrl_net.node_enc.node_embs.weight.grad)
+        # print("node_enc.node_embs.weight.grad", self._sparrl_net_tgt.node_enc.node_embs.weight.grad)
 
         # Train model
         self._optim.step()
