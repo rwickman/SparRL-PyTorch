@@ -11,7 +11,7 @@ from replay_memory import PrioritizedExReplay
 from agents.rl_agent import RLAgent
 from agents.storage import ActionMessage, State
 from conf import *
-#from expert_control import ExpertControl
+from expert_control import ExpertControl
 
 mp.set_start_method("spawn", force=True)
 mp.set_sharing_strategy('file_system')
@@ -28,12 +28,15 @@ class AgentManager:
     def __init__(self, args, rl_agent: RLAgent):
         self.args = args
         self._rl_agent = rl_agent
-        #self._expert_control = ExpertControl(self.args)
+        self._expert_control = ExpertControl(self.args)
         self._init_workers()
+
+        self._ec_triggered = False
     
     def _init_workers(self):
         """Initialize the child processes with duplicate environments."""
         self._child_processes = []
+        print("Creating workers.")
         for i in range(self.args.workers):
             # Stores the states from the AgentWorker
             state_queue = mp.Queue(1)
@@ -56,7 +59,11 @@ class AgentManager:
 
     def _terminate_episode(self, exs: list):
         """Add experiences from episode to replay buffer."""
+        rewards = []
         for ex in exs:
+            # Add timestep reward
+            rewards.append(ex.reward)
+
             # Move to CUDA device
             ex.state.subgraph = ex.state.subgraph.to(device)
             ex.state.local_stats = ex.state.local_stats.to(device)
@@ -71,7 +78,11 @@ class AgentManager:
 
             self._rl_agent.add_ex(ex)
 
-        self._rl_agent.reset()
+        # Get the average reward
+        avg_reward = sum(rewards) / len(rewards)
+        
+        # Reset for next episode
+        self._rl_agent.reset(avg_reward)
 
     def _aggregate_states(self, states: list) -> State:
         """Aggregate states from several workers.
@@ -100,6 +111,7 @@ class AgentManager:
             nonterm_p_ids = list(range(len(self._child_processes)))
             
             # Run until all episodes are terminated
+            t = 0
             while len(nonterm_p_ids) > 0:
                 states = []
 
@@ -134,21 +146,48 @@ class AgentManager:
                     for i, p_id in enumerate(nonterm_p_ids):
                         self._child_processes[p_id].action_queue.put(
                             ActionMessage(action[i]))
-                    
-            if self._rl_agent.is_ready_to_train:
+                                # if self._rl_agent.is_ready_to_train:
                 # Train the model
-                for _ in range(self.args.train_iter):
+                if self._rl_agent.is_ready_to_train and t % 4 == 0:
+                    print("Training")
                     self._rl_agent.reset_noise()
                     self._rl_agent.train()
+                    print("Done Training")
+                
+                t += 1
+
+            # if self._rl_agent.is_ready_to_train:
+            #     # Train the model
+            #     print("Training")
+            #     for _ in range(self.args.train_iter):
+            #         self._rl_agent.reset_noise()    
+            #         self._rl_agent.train()
+                
+            #     print("Done Training")
 
             # Save the models
-            print("SAVING")
             
-            #print("Should Trigger EC:", self._expert_control._test_mean_reward(self._rl_agent))
             
-            if e_i % 8 == 0:
+            
+
+            # Check if expert control should be triggered
+            if not self._ec_triggered and \
+                self.args.expert_episodes > 0 and \
+                not self.args.no_ec:
+                self._rl_agent._sparrl_net.eval()    
+                if self._expert_control._test_mean_reward(self._rl_agent):
+                
+                    self._ec_triggered = True
+                    self.args.expert_lam = 0.0
+                    self.args.expert_epsilon = -1.0
+                self._rl_agent._sparrl_net.train()
+            
+            print("Should Trigger EC:", self._ec_triggered)
+            
+            if (e_i + 1) % self.args.save_iter == 0:
+                print("SAVING")
                 self._rl_agent.save()
-            print("DONE SAVING")
+                print("DONE SAVING")
         
         print("SAVING")
         self._rl_agent.save()

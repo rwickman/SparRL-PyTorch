@@ -23,7 +23,7 @@ class RLAgent(Agent):
         self._train_dict = {
             "update_step" : 0,
             "episodes" : 0,
-            "final_rewards" : [],
+            "avg_rewards" : [],
             "mse_losses" : []
         }
         
@@ -64,13 +64,14 @@ class RLAgent(Agent):
         """Check for if the model is ready to start training."""
         return self._memory.cur_cap() >= self.args.batch_size
 
-    def reset(self):
+    def reset(self, avg_reward: float = None):
         if not self.args.eval:
             # Update number of elapsed episodes
-            self._train_dict["episodes"] += self.args.workers
+            self._train_dict["episodes"] += 1
 
             # Add the last reward of the episode
-            self._train_dict["final_rewards"].append(self._ex_buffer[-1].reward)
+            if avg_reward:
+                self._train_dict["avg_rewards"].append(avg_reward)
 
             # Add episode experiences
             self._add_stored_exs()
@@ -125,13 +126,13 @@ class RLAgent(Agent):
 
     def _sample_action(self, q_vals: torch.Tensor, argmax=False) -> int:
         """Sample an action from the given Q-values."""
-        if not argmax and self.epsilon_threshold >= np.random.rand():
-            # Sample a random action
-            action = np.random.randint(q_vals.shape[0])
-        else:
-            with torch.no_grad():
-                # Get action with maximum Q-value
-                action = q_vals.argmax()
+        # if not argmax and self.epsilon_threshold >= np.random.rand():
+        #     # Sample a random action
+        #     action = np.random.randint(q_vals.shape[0])
+        # else:
+        with torch.no_grad():
+            # Get action with maximum Q-value
+            action = q_vals.argmax()
 
         return int(action)
 
@@ -343,14 +344,16 @@ class RLAgent(Agent):
         # Train model
         self._optim.step()
 
-        # Check if using decay and min lr not reached
-        print("LR", self._optim.param_groups[0]["lr"])
-        if not self.args.no_lr_decay and self._optim.param_groups[0]["lr"] > self.args.min_lr:
-            # If so, decay learning rate
-            self._lr_scheduler.step()
-        else:
-            self._optim.param_groups[0]["lr"] = self.args.min_lr
-
+        # Check if using decay and min lr not reached        
+        # if self._train_dict["update_step"] < self.args.lr_warmup_steps:
+        #     self._optim.param_groups[0]["lr"] = self.args.lr * (self._train_dict["update_step"] + 1) / self.args.lr_warmup_steps 
+        # elif not self.args.no_lr_decay and self._optim.param_groups[0]["lr"] > self.args.min_lr:
+        #     # If so, decay learning rate
+        #     self._lr_scheduler.step()
+        # else:
+        #     self._optim.param_groups[0]["lr"] = self.args.min_lr
+        #print("LR", self._optim.param_groups[0]["lr"])
+        
         # Update train info
         self._train_dict["update_step"] += 1
         self._train_dict["mse_losses"].append(float(loss.detach()))
@@ -359,7 +362,7 @@ class RLAgent(Agent):
         self._update_target()
         
         # Print out q_values and td_targets for debugging/progress updates
-        if (self._train_dict["update_step"] + 1) % 8 == 0:
+        if (self._train_dict["update_step"] + 1) % self.args.train_iter == 0:
             print("self.epsilon_threshold", self.epsilon_threshold)
             print("q_values", q_vals)
             print("td_targets", td_targets)

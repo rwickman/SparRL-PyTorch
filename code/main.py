@@ -31,9 +31,13 @@ if __name__ == "__main__":
             help="Number of episodes to train on.")
     parser.add_argument("--batch_size", type=int, default=64,
             help="Number of episodes to train on.")
+    parser.add_argument("--save_iter", type=int, default=8,
+            help="Number of episodes to wait till saving the model.")
     parser.add_argument("--train_iter", type=int, default=3,
                     help="Number of gradient update steps after each episode.")
-    parser.add_argument("--lr", type=float, default=1e-3,
+    parser.add_argument("--lr_warmup_steps", type=int, default=32,
+                    help="Number of steps for linear LR warmup.")
+    parser.add_argument("--lr", type=float, default=3e-4,
                     help="Learning rate.")
     parser.add_argument("--min_lr", type=float, default=1e-6,
                     help="Minimum learning rate.")
@@ -65,9 +69,9 @@ if __name__ == "__main__":
     #     help="n value used for sampling number of edges to prune per episode from beta-binomial distribution.")
     env_args.add_argument("--T_alpha", type=float, default=1.0,
         help="Alpha value used for sampling number of edges to prune per episode from beta-binomial distribution.")
-    env_args.add_argument("--T_beta", type=float, default=2.0,
+    env_args.add_argument("--T_beta", type=float, default=3.0,
         help="Beta value used for sampling number of edges to prune per episode from beta-binomial distribution.")
-    env_args.add_argument("--preprune_pct", type=float, default=0.0,
+    env_args.add_argument("--preprune_pct", type=float, default=0.5,
         help="Percentage of edges to preprune.")
     env_args.add_argument("--reward_factor", type=float, default=1.0,
         help="Reward scaling factor.")
@@ -78,7 +82,7 @@ if __name__ == "__main__":
         help="Size of node and edge embeddings.")
     net_args.add_argument("--hidden_size", type=int, default=256,
         help="Number of hidden units in each FC layer for the SparRL network.")
-    net_args.add_argument("--drop_rate", type=float, default=0.0,
+    net_args.add_argument("--drop_rate", type=float, default=0.1,
         help="Dropout rate.")
     net_args.add_argument("--num_enc_layers", type=int, default=3,
         help="Number of Transformer Encoder layers.")
@@ -126,12 +130,14 @@ if __name__ == "__main__":
                     help="Number of expert episodes.")
                     
     ec_args = parser.add_argument_group("Expert Control")
-    ec_args.add_argument("--ec_episodes", type=int, default=8,
+    ec_args.add_argument("--ec_episodes", type=int, default=1,
                     help="Number of expert control episodes.")
-    ec_args.add_argument("--T_ec", type=int, default=32,
+    ec_args.add_argument("--T_ec", type=int, default=128,
                     help="Number edge to prune for expert control.")
     ec_args.add_argument("--ec_sig_val", type=float, default=0.1,
                     help="Expert control signddficant value threshold.")
+    ec_args.add_argument("--no_ec", action="store_true",
+            help="Don't use expert control.")
 
     eval_args = parser.add_argument_group("Evaluation")
     eval_args.add_argument("--eval", action="store_true",

@@ -12,15 +12,15 @@ class NoisyLinear(nn.Module):
         super().__init__()
         self.args = args
         
-        self.in_features  = in_features
+        self.in_features = in_features
         self.out_features = out_features
-        self.std_init     = std_init
+        self.std_init = std_init
         
-        self.weight_mu    = nn.Parameter(torch.FloatTensor(out_features, in_features))
+        self.weight_mu = nn.Parameter(torch.FloatTensor(out_features, in_features))
         self.weight_sigma = nn.Parameter(torch.FloatTensor(out_features, in_features))
         self.register_buffer('weight_epsilon', torch.FloatTensor(out_features, in_features))
         
-        self.bias_mu    = nn.Parameter(torch.FloatTensor(out_features))
+        self.bias_mu = nn.Parameter(torch.FloatTensor(out_features))
         self.bias_sigma = nn.Parameter(torch.FloatTensor(out_features))
         self.register_buffer('bias_epsilon', torch.FloatTensor(out_features))
         
@@ -32,10 +32,10 @@ class NoisyLinear(nn.Module):
     def forward(self, x):
         if self.training: 
             weight = self.weight_mu + self.weight_sigma.mul(self.weight_epsilon)
-            bias   = self.bias_mu   + self.bias_sigma.mul(self.bias_epsilon)
+            bias = self.bias_mu + self.bias_sigma.mul(self.bias_epsilon)
         else:
             weight = self.weight_mu
-            bias   = self.bias_mu
+            bias = self.bias_mu
         
         return F.linear(x, weight, bias)
     
@@ -49,7 +49,7 @@ class NoisyLinear(nn.Module):
         self.bias_sigma.data.fill_(self.std_init / math.sqrt(self.bias_sigma.size(0)))
     
     def reset_noise(self):
-        epsilon_in  = self._scale_noise(self.in_features)
+        epsilon_in = self._scale_noise(self.in_features)
         epsilon_out = self._scale_noise(self.out_features)
         
         self.weight_epsilon.copy_(epsilon_out.ger(epsilon_in))
@@ -73,8 +73,10 @@ class NodeEncoder(nn.Module):
         self.fc_1 = nn.Linear(self.args.hidden_size + NUM_LOCAL_STATS, self.args.hidden_size)
         self.fc_2 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
 
-        #self.norm_1 = nn.LayerNorm(self.args.hidden_size, eps=1e-7)
+        self.norm_1 = nn.LayerNorm(self.args.hidden_size, eps=1e-7)
+        self.norm_2 = nn.LayerNorm(self.args.hidden_size, eps=1e-7)
         self.dropout_1 = nn.Dropout(self.args.drop_rate)
+        self.dropout_2 = nn.Dropout(self.args.drop_rate)
         
         
     def forward(self, subgraph: torch.Tensor, local_stats: torch.Tensor):
@@ -86,11 +88,14 @@ class NodeEncoder(nn.Module):
             torch.cat((node_embs, local_stats), -1))
         #node_embs = self.norm_1(node_embs)
         node_embs = F.relu(node_embs)
+        node_embs = self.norm_1(node_embs)
         node_embs = self.dropout_1(node_embs)
 
         # Create final node embeddings
         node_embs = self.fc_2(node_embs)
-        
+        node_embs = self.norm_2(node_embs)
+        node_embs = self.dropout_2(node_embs)
+
         return node_embs 
 
 class EdgeEncoder(nn.Module):
@@ -106,21 +111,27 @@ class EdgeEncoder(nn.Module):
             kernel_size=2,
             stride=2)
         #self.norm_1 = nn.LayerNorm(self.args.hidden_size, eps=1e-7)
+        #self.dropout_1 = nn.Dropout(self.args.drop_rate)
+
+        self.norm_1 = nn.LayerNorm(self.args.hidden_size, eps=1e-7)
+        self.norm_2 = nn.LayerNorm(self.args.hidden_size, eps=1e-7)
         self.dropout_1 = nn.Dropout(self.args.drop_rate)
+        self.dropout_2 = nn.Dropout(self.args.drop_rate)
 
         # Used produce to produce the final edge embedding
         self.edge_fc = nn.Linear(self.args.hidden_size, self.args.hidden_size)
 
     def forward(self, node_embs: torch.Tensor):
         # Combine the node embeddings to create edge embeddings
-        edge_embs = self.edge_conv1d(node_embs.transpose(1,2))
-        #edge_embs = self.norm_1(edge_embs.transpose(1,2))
-        edge_embs = F.relu(edge_embs.transpose(1,2))
+        edge_embs = F.relu(self.edge_conv1d(node_embs.transpose(1,2)))
+        edge_embs = self.norm_1(edge_embs.transpose(1,2))
         edge_embs = self.dropout_1(edge_embs)
         
         # Create the final edge embeddings
         edge_embs = self.edge_fc(edge_embs)
-        
+        edge_embs = self.norm_2(edge_embs)
+        edge_embs = self.dropout_2(edge_embs)
+
         return edge_embs
 
 class GlobalStatisticsEncoder(nn.Module):
@@ -132,17 +143,24 @@ class GlobalStatisticsEncoder(nn.Module):
         self.fc_1 = nn.Linear(NUM_GLOBAL_STATS, self.args.hidden_size)
         self.fc_2 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
 
-        #self.norm_1 = nn.LayerNorm(self.args.hidden_size, eps=1e-7)
+        self.norm_1 = nn.LayerNorm(self.args.hidden_size, eps=1e-7)
+        self.norm_2 = nn.LayerNorm(self.args.hidden_size, eps=1e-7)
         self.dropout_1 = nn.Dropout(self.args.drop_rate)
+        self.dropout_2 = nn.Dropout(self.args.drop_rate)
+
+
 
     def forward(self, global_stats):
         global_stats_emb = self.fc_1(global_stats)
         #global_stats_emb = self.norm_1(global_stats_emb)
         global_stats_emb = F.relu(global_stats_emb)
+        global_stats_emb = self.norm_1(global_stats_emb)
         global_stats_emb = self.dropout_1(global_stats_emb)
 
         # Create final statistics embedding
         global_stats_emb = self.fc_2(global_stats_emb)
+        global_stats_emb = self.norm_2(global_stats_emb)
+        global_stats_emb = self.dropout_2(global_stats_emb)
         
         return global_stats_emb
         

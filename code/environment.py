@@ -15,6 +15,7 @@ class Environment:
         self.agent = agent
         self._graph = graph
         self._org_num_edges = self._graph.get_num_edges()
+        self.args.T_max = min(self._org_num_edges, self.args.T_max) 
 
         # Setup the RewardManager to manage rewards 
         self.reward_man = RewardManager(args, graph)
@@ -86,6 +87,8 @@ class Environment:
 
         # Sanity-check
         if subgraph_len <= 0:
+            print("num_preprune", num_preprune)
+            print("self._graph.get_num_edges()", self._graph.get_num_edges())
             raise Exception("Zero edges in graph.")
 
         # Sample random edges

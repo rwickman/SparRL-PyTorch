@@ -44,6 +44,9 @@ class MultiHeadAttention(nn.Module):
             scaled_att_logits += (mask * -1e9)
             
         att_weights = F.softmax(scaled_att_logits, dim=-1)
+        # print("mask", mask)
+        # print("scaled_att_logits", scaled_att_logits)
+        # print("att_weights", att_weights)
         scaled_att = torch.matmul(att_weights, v)
 
         # (batch_size, fbs+hidden+enc_state, num_heads, depth)
@@ -106,18 +109,21 @@ class Encoder(nn.Module):
 
         self.enc_layers = nn.ModuleList([EncoderLayer(self.args) for _ in range(self.args.num_enc_layers)])
         
-        self.dropout = nn.Dropout(self.args.drop_rate)
+        #self.dropout = nn.Dropout(self.args.drop_rate)
 
     def forward(self, x, mask=None):
         """
             x: task emb, example emb, used fbs embs
         """
         x = x * torch.sqrt(torch.tensor(self.args.hidden_size, dtype=torch.float32)).cuda()
-        x = self.dropout(x)
+        #print("PREV X: ", x)
+        #x = self.dropout(x)
+        # print("NOW X: ", x)
+
 
         # Run through all encoder fb
         for enc_layer in self.enc_layers:
             x = enc_layer(x, mask)
-        
+
         # Return output of last encoder fb
         return x
