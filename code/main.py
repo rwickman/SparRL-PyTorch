@@ -7,6 +7,7 @@ from replay_memory import PrioritizedExReplay
 from results_manager import ResultsManager
 from graph import Graph
 from agent_manager import AgentManager
+from util import num_expert_episodes
 
 def main(args):
     if not os.path.exists(args.save_dir):
@@ -14,6 +15,7 @@ def main(args):
     
     memory = PrioritizedExReplay(args)
     graph = Graph(args)
+
     agent = RLAgent(args, memory, graph.num_nodes, ExpertAgent(args, graph))
     
     if args.eval:
@@ -21,6 +23,15 @@ def main(args):
         results_man = ResultsManager(args, agent, env)
         results_man.eval()
     else:
+        if args.expert_episodes > 0:
+            expected_num_ep = num_expert_episodes(
+                graph.get_num_edges(),
+                args)
+            
+            print("expected_num_ep", expected_num_ep)
+            args.expert_episodes = max(expected_num_ep, args.workers)
+            print("args.expert_episodes", args.expert_episodes)
+
         del graph
         agent_man = AgentManager(args, agent)
         agent_man.run()
@@ -130,6 +141,8 @@ if __name__ == "__main__":
                     help="Expert sparsification method.")
     il_args.add_argument("--expert_episodes", type=int, default=0.0,
                     help="Number of expert episodes.")
+    il_args.add_argument("--expert_p", type=float, default=0.95,
+                    help="Probability of observing all edges.")
                     
     ec_args = parser.add_argument_group("Expert Control")
     ec_args.add_argument("--ec_episodes", type=int, default=1,
