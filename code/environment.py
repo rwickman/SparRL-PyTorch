@@ -72,8 +72,8 @@ class Environment:
         # Shift back to original node ids
         edge = (int(edge[0] - 1), int(edge[1] - 1))
 
-        if not (edge[0] > 0 and edge[1] > 0):
-            raise Exception(f"INVALID EDGE {edge}")
+        if not (edge[0] >= 0 and edge[1] >= 0):
+            raise Exception(f"INVALID EDGE {edge} WITH IDX {edge_idx}")
             #assert edge[0] > 0 and edge[1] > 0 
 
         # Remove from graph

@@ -51,18 +51,18 @@ class RLAgent(Agent):
         
 
 
-    @property
-    def epsilon_threshold(self):
-        """Return the current epsilon value used for epsilon-greedy exploration."""
-        # Adjust for number of expert episodes that have elapsed
-        cur_step = max(self._train_dict["update_step"] - self.args.expert_episodes * self.args.train_iter, 0)
-        return self.args.min_epsilon + (self.args.epsilon - self.args.min_epsilon) * \
-            math.exp(-1. * cur_step / self.args.epsilon_decay)
+    # @property
+    # def epsilon_threshold(self):
+    #     """Return the current epsilon value used for epsilon-greedy exploration."""
+    #     # Adjust for number of expert episodes that have elapsed
+    #     cur_step = max(self._train_dict["update_step"] - self.args.expert_episodes * self.args.train_iter, 0)
+    #     return self.args.min_epsilon + (self.args.epsilon - self.args.min_epsilon) * \
+    #         math.exp(-1. * cur_step / self.args.epsilon_decay)
     
     @property
     def is_ready_to_train(self) -> bool:
         """Check for if the model is ready to start training."""
-        return self._memory.cur_cap() >= self.args.batch_size
+        return self._memory.cur_cap() >= self.args.batch_size and self._train_dict["episodes"] >= self.args.min_ep
 
     def reset(self, avg_reward: float = None):
         if not self.args.eval:
@@ -250,7 +250,7 @@ class RLAgent(Agent):
         Returns:
             the loss for the batch
         """
-        is_ws, exs, indices = self._memory.sample(self.args.batch_size, self._train_dict["update_step"])
+        is_ws, exs, indices = self._memory.sample(self.args.batch_size, self._train_dict["episodes"])
         td_targets = torch.zeros(self.args.batch_size, device=device)
         
         states, actions, rewards, next_states, next_state_mask, is_experts, gammas = self._unwrap_exs(exs)
@@ -323,17 +323,14 @@ class RLAgent(Agent):
         #loss = torch.mean(td_errors ** 2  *  is_ws)
 
         self._memory.update_priorities(indices, td_errors.detach().abs(), is_experts)
-        print("loss", loss)
+        
         #print("L2 LOSS", torch.mean(td_errors ** 2  *  is_ws))
-        print("expert_margin_loss", expert_margin_loss* self.args.expert_lam)
+       
         
         loss += expert_margin_loss * self.args.expert_lam
         loss.backward()
         
         # Clip gradient
-        # print("node_enc.node_embs.weight.grad", self._sparrl_net.node_enc.node_embs.weight.grad)
-        # print("node_enc.node_embs.weight.grad", self._sparrl_net_tgt.node_enc.node_embs.weight.grad)
-
         nn.utils.clip_grad.clip_grad_norm_(
             self._sparrl_net.parameters(),
             self.args.max_grad_norm)
@@ -362,8 +359,9 @@ class RLAgent(Agent):
         self._update_target()
         
         # Print out q_values and td_targets for debugging/progress updates
-        if (self._train_dict["update_step"] + 1) % self.args.train_iter == 0:
-            print("self.epsilon_threshold", self.epsilon_threshold)
+        if (self._train_dict["update_step"] + 1) % 64 == 0:
+            print("loss", loss)
+            print("expert_margin_loss", expert_margin_loss* self.args.expert_lam)
             print("q_values", q_vals)
             print("td_targets", td_targets)
             print("rewards", rewards)

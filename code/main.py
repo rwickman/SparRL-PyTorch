@@ -29,12 +29,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--episodes", type=int, default=2048,
             help="Number of episodes to train on.")
-    parser.add_argument("--batch_size", type=int, default=64,
+    parser.add_argument("--batch_size", type=int, default=32,
             help="Number of episodes to train on.")
     parser.add_argument("--save_iter", type=int, default=8,
             help="Number of episodes to wait till saving the model.")
-    parser.add_argument("--train_iter", type=int, default=3,
-                    help="Number of gradient update steps after each episode.")
+    # parser.add_argument("--train_iter", type=int, default=3,
+    #                 help="Number of gradient update steps after each episode.")
     parser.add_argument("--lr_warmup_steps", type=int, default=32,
                     help="Number of steps for linear LR warmup.")
     parser.add_argument("--lr", type=float, default=3e-4,
@@ -49,6 +49,8 @@ if __name__ == "__main__":
             help="Models save directory..")
     parser.add_argument("--load", action="store_true",
             help="Load saved models.")
+    parser.add_argument("--min_ep", type=int, default=16,
+            help="Minimum number of episodes that have to be elapsed before training.")
 
     graph_args = parser.add_argument_group("Graph")
     graph_args.add_argument("--edge_list", required=True,
@@ -92,9 +94,9 @@ if __name__ == "__main__":
         help="Number of units in the pointwise FFN .")
 
     dqn_args = parser.add_argument_group("DQN")
-    dqn_args.add_argument("--epsilon", type=float, default=0.95,
+    dqn_args.add_argument("--epsilon", type=float, default=0.0,
                     help="Initial epsilon used for epsilon-greedy in DQN.")
-    dqn_args.add_argument("--min_epsilon", type=float, default=0.01,
+    dqn_args.add_argument("--min_epsilon", type=float, default=0.0,
                     help="Minimum epsilon value used for epsilon-greedy in DQN.")
     dqn_args.add_argument("--epsilon_decay", type=int, default=1024,
                     help="Epsilon decay step used for decaying the epsilon value in epsilon-greedy exploration.")

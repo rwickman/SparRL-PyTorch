@@ -2,6 +2,7 @@ import torch
 # from multiprocessing import Process, Queue, set_start_method
 import torch.multiprocessing as mp
 from dataclasses import dataclass
+import json,os
 
 
 from graph import Graph
@@ -30,9 +31,31 @@ class AgentManager:
         self._rl_agent = rl_agent
         self._expert_control = ExpertControl(self.args)
         self._init_workers()
+        
+        self._man_file = os.path.join(self.args.save_dir, "agent_man.json")
+        if self.args.load:
+            self.load()
+        else:
+            self._agent_man_dict = {
+                "ec_triggered" : False    
+            }
+        
 
-        self._ec_triggered = False
+        
     
+    def save(self):
+        self._rl_agent.save()
+        with open(self._man_file, "w") as f:
+            json.dump(self._agent_man_dict, f)
+        
+    def load(self):
+        with open(self._man_file) as f:
+            self._agent_man_dict = json.load(f)
+        
+        if self._agent_man_dict["ec_triggered"]:
+            self.args.expert_lam = 0.0
+            self.args.expert_epsilon = -1.0
+
     def _init_workers(self):
         """Initialize the child processes with duplicate environments."""
         self._child_processes = []
@@ -171,24 +194,24 @@ class AgentManager:
             
 
             # Check if expert control should be triggered
-            if not self._ec_triggered and \
+            if not self._agent_man_dict["ec_triggered"] and \
                 self.args.expert_episodes > 0 and \
                 not self.args.no_ec:
                 self._rl_agent._sparrl_net.eval()    
                 if self._expert_control._test_mean_reward(self._rl_agent):
-                
-                    self._ec_triggered = True
+                    self._agent_man_dict["ec_triggered"] = True
                     self.args.expert_lam = 0.0
                     self.args.expert_epsilon = -1.0
+
                 self._rl_agent._sparrl_net.train()
             
-            print("Should Trigger EC:", self._ec_triggered)
+            print("Should Trigger EC:", self._agent_man_dict["ec_triggered"])
             
             if (e_i + 1) % self.args.save_iter == 0:
                 print("SAVING")
-                self._rl_agent.save()
+                self.save()
                 print("DONE SAVING")
         
         print("SAVING")
-        self._rl_agent.save()
+        self.save()
         print("DONE SAVING")

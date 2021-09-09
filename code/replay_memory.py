@@ -32,7 +32,7 @@ class ReplayMemory:
             self._memory.append(exp)
 
         # Update end of memory
-        self._cur_pos = (self._cur_pos + 1) %  self.args.mem_cap 
+        self._cur_pos = (self._cur_pos + 1) %  self.args.mem_cap
     
     def sample(self, batch_size):
         """Sample batch size experience replay."""
@@ -76,7 +76,7 @@ class PrioritizedExReplay:
 
         self._sum_tree.add(exp, priority)
 
-    def sample(self, batch_size: int, train_step: int):
+    def sample(self, batch_size: int, num_episodes: int):
         """Sample batch size experience replay."""
         segment = self._sum_tree.total() / batch_size
         priorities = torch.zeros(batch_size).to(device)
@@ -95,8 +95,8 @@ class PrioritizedExReplay:
         sample_ps = priorities / self._sum_tree.total()
         
         # Increase per beta by the number of episodes that have elapsed
-        cur_per_beta = min((train_step / self.args.train_iter)/self.args.episodes, 1) * (1-self.args.per_beta) + self.args.per_beta
-        #print("cur_per_beta", cur_per_beta)
+        cur_per_beta = min(num_episodes/self.args.episodes, 1) * (1-self.args.per_beta) + self.args.per_beta
+        # print("\n\ncur_per_beta", cur_per_beta, "\n\n")
 
         is_ws = (sample_ps  * self.cur_cap()) ** -cur_per_beta
         

@@ -1,5 +1,6 @@
 from scipy import stats
 
+from agents.expert_agent import ExpertAgent
 from agents.random_agent import RandomAgent
 from agents.rl_agent import RLAgent
 from agents.agent import Agent
@@ -13,21 +14,24 @@ class ExpertControl:
 
         # Create environment for testing
         self.graph = Graph(self.args)
-        self.env = Environment(self.args, RandomAgent(self.args), self.graph)
+        print(self.graph.get_num_edges())
+        self.env = Environment(self.args, None, self.graph)
 
 
+        #self._expert_rewards = self._run_episodes(ExpertAgent(self.args, self.graph))
         self._rand_rewards = self._run_episodes(RandomAgent(self.args))
 
 
     def _run_episodes(self, agent: Agent) -> list:
+        self.env.agent = agent
         rewards = []
         for i in range(self.args.ec_episodes):
             # Calculate preprune percent
-            preprune_pct = self.args.preprune_pct * (i+1) /self.args.ec_episodes
+            #preprune_pct = self.args.preprune_pct * (i+1) /self.args.ec_episodes
             
             # Preprune edges
-            self.env.preprune(preprune_pct)
-
+            #self.env.preprune(preprune_pct)
+            
             # Run the episode            
             for t in range(self.args.T_ec):
 
@@ -54,7 +58,7 @@ class ExpertControl:
             boolean indicating if there is significance difference beteween the means.
         """
         rewards = self._run_episodes(agent)
-        # print("self._rand_rewards", self._rand_rewards, len(self._rand_rewards))
+        # print("self._expert_rewards", self._expert_rewards, len(self._expert_rewards))
         # print("RL Agent rewards", rewards, len(rewards))
         print("RAND MEAN", sum( self._rand_rewards)/len(self._rand_rewards))
         print("RL MEAN", sum(rewards) / len(rewards))
@@ -66,5 +70,3 @@ class ExpertControl:
         should_trigger = p_value < self.args.ec_sig_val and test_stat < 0
         print("p_value", p_value, "test_stat", test_stat)
         return should_trigger
-
-    
