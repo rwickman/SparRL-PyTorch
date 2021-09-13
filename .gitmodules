@@ -1,0 +1,3 @@
+[submodule "node2vec"]
+	path = node2vec
+	url = git@github.com:rwickman/node2vec.git
