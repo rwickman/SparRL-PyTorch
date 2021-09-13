@@ -173,11 +173,11 @@ class AgentManager:
                             ActionMessage(action[i]))
                                 # if self._rl_agent.is_ready_to_train:
                 # Train the model
-                if self._rl_agent.is_ready_to_train and t % 4 == 0:
-                    print("Training")
+                if self._rl_agent.is_ready_to_train:
+                    #print("Training")
                     self._rl_agent.reset_noise()
                     self._rl_agent.train()
-                    print("Done Training")
+                    #print("Done Training")
                 
                 t += 1
 
@@ -209,10 +209,10 @@ class AgentManager:
             
             print("Should Trigger EC:", self._agent_man_dict["ec_triggered"])
             
-            if (e_i + 1) % self.args.save_iter == 0:
-                print("SAVING")
-                self.save()
-                print("DONE SAVING")
+            # if (e_i + 1) % self.args.save_iter == 0:
+            print("SAVING")
+            self.save()
+            print("DONE SAVING")
         
         print("SAVING")
         self.save()

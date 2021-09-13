@@ -47,7 +47,7 @@ class ExpertAgent(Agent):
         
             edge = [subgraph[2*edge_idx], subgraph[2*edge_idx + 1]]
 
-            score = self.edge_score((int(edge[0]) - 1, int(edge[1]) - 1))
+            score = self.edge_score((int(edge[0]), int(edge[1])))
             if min_score is None or min_score > score:
                 min_score = score
                 min_edge = edge_idx

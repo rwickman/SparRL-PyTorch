@@ -12,7 +12,7 @@ def num_expert_episodes(E, args):
     """
     T_avg = betabinom.stats(args.T_max, args.T_alpha, args.T_beta, moments="m")
     print("T_avg:", T_avg)  
-    return np.log(1-args.expert_p) / (T_avg * np.log(1-args.subgraph_len/E))
+    return float(np.log(1-args.expert_p) / (T_avg * np.log(1-args.subgraph_len/E)))
 
 
 

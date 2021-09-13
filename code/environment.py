@@ -70,7 +70,8 @@ class Environment:
         edge = [subgraph[0, 2*edge_idx], subgraph[0, 2*edge_idx + 1]]
         
         # Shift back to original node ids
-        edge = (int(edge[0] - 1), int(edge[1] - 1))
+        #edge = (int(edge[0] - 1), int(edge[1] - 1))
+        edge = (int(edge[0]), int(edge[1]))
 
         if not (edge[0] >= 0 and edge[1] >= 0):
             raise Exception(f"INVALID EDGE {edge} WITH IDX {edge_idx}")
@@ -121,7 +122,8 @@ class Environment:
         local_stats = torch.log(local_stats + 1)
 
         # Add one to subgraph as node ID 0 is reserved for empty node
-        temp_subgraph = torch.tensor(subgraph, device=self._device, dtype=torch.int32) + 1
+        #temp_subgraph = torch.tensor(subgraph, device=self._device, dtype=torch.int32) + 1
+        temp_subgraph = torch.tensor(subgraph, device=self._device, dtype=torch.int32)
         temp_subgraph = temp_subgraph.flatten().unsqueeze(0)
 
         # Extend to include empty edges

@@ -24,11 +24,14 @@ class RLAgent(Agent):
             "update_step" : 0,
             "episodes" : 0,
             "avg_rewards" : [],
-            "mse_losses" : []
+            "mse_losses" : [],
+            "sigma_mean_abs_1": [],
+            "sigma_mean_abs_2": []
         }
         
         # Create SparRL networks
         self._sparrl_net = SparRLNet(self.args, num_nodes).to(device)
+        
         self._sparrl_net_tgt = SparRLNet(self.args, num_nodes).to(device)
         self._sparrl_net_tgt.eval()
 
@@ -184,6 +187,7 @@ class RLAgent(Agent):
 
         # Clear the experiences from the experince buffer
         self._ex_buffer.clear()
+        self._sparrl_net.train()
 
 
     def _unwrap_exs(self, exs: list):
@@ -218,7 +222,7 @@ class RLAgent(Agent):
             
             actions.append(ex.action)
             rewards[i] = ex.reward
-            is_experts[i] = ex.is_expert
+            is_experts[i] = bool(ex.is_expert)
             gammas[i] = ex.gamma
             if ex.next_state is not None:
                 next_subgraphs[i, :ex.next_state.subgraph.shape[1]] = ex.next_state.subgraph
@@ -257,7 +261,6 @@ class RLAgent(Agent):
 
         # Select the q-value for every state
         actions = torch.tensor(actions, dtype=torch.int64, device=device)
-
         q_vals_matrix = self._sparrl_net(states)
 
         q_vals = q_vals_matrix.gather(1, actions.unsqueeze(1)).squeeze(1)
@@ -320,6 +323,7 @@ class RLAgent(Agent):
         # Compute L1 loss
         td_errors = td_targets  - q_vals
         loss = torch.mean(td_errors.abs()  *  is_ws)
+        #print("loss", loss)
         #loss = torch.mean(td_errors ** 2  *  is_ws)
 
         self._memory.update_priorities(indices, td_errors.detach().abs(), is_experts)
@@ -336,8 +340,17 @@ class RLAgent(Agent):
             self.args.max_grad_norm)
 
         # print("node_enc.node_embs.weight.grad", self._sparrl_net.node_enc.node_embs.weight.grad)
-        # print("node_enc.node_embs.weight.grad", self._sparrl_net_tgt.node_enc.node_embs.weight.grad)
+        # print("node_enc.node_embs.weight.grad", self._sparrl_net.node_enc.node_embs.weight.grad)
+        # print("self._sparrl_net.q_fc_1.weight_mu.grad", self._sparrl_net.q_fc_1.weight_mu.grad, self._sparrl_net.q_fc_1.weight_sigma.is_leaf)
+        # print("self._sparrl_net.q_fc_1.weight_sigma.grad", self._sparrl_net.q_fc_1.weight_sigma.grad, self._sparrl_net.q_fc_1.weight_mu.is_leaf)
+        # print("self._sparrl_net.q_fc_2.weight_mu.grad", self._sparrl_net.q_fc_2.weight_mu.grad)
+        # print("self._sparrl_net.q_fc_2.weight_sigma.grad", self._sparrl_net.q_fc_2.weight_sigma.grad)
 
+        #print("self._sparrl_net.q_fc_2.bias_mu.grad", self._sparrl_net.q_fc_2.bias_mu.grad, self._sparrl_net.q_fc_2.bias_mu.is_leaf)
+        # print("self._sparrl_net.q_fc_2.bias_sigma.grad", self._sparrl_net.q_fc_2.bias_sigma.grad, self._sparrl_net.q_fc_2.bias_sigma.is_leaf)
+        # print("self._sparrl_net.q_fc_2.weight_epsilon.grad", self._sparrl_net.q_fc_2.weight_epsilon.grad, self._sparrl_net.q_fc_2.weight_epsilon.is_leaf)
+
+        # print("self._sparrl_net.training", self._sparrl_net.training)
         # Train model
         self._optim.step()
 
@@ -354,6 +367,10 @@ class RLAgent(Agent):
         # Update train info
         self._train_dict["update_step"] += 1
         self._train_dict["mse_losses"].append(float(loss.detach()))
+        self._train_dict["sigma_mean_abs_1"].append(
+            float(self._sparrl_net.q_fc_1.sigma_mean_abs()))
+        self._train_dict["sigma_mean_abs_2"].append(
+            float(self._sparrl_net.q_fc_2.sigma_mean_abs()))
 
         # Update the DQN target parameters
         self._update_target()

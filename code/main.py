@@ -15,6 +15,9 @@ def main(args):
     
     memory = PrioritizedExReplay(args)
     graph = Graph(args)
+    # print("graph.num_nodes", graph.num_nodes)
+    # print("graph._G.nodes", graph._G.nodes)
+
 
     agent = RLAgent(args, memory, graph.num_nodes, ExpertAgent(args, graph))
     
@@ -27,10 +30,15 @@ def main(args):
             expected_num_ep = num_expert_episodes(
                 graph.get_num_edges(),
                 args)
-            
             print("expected_num_ep", expected_num_ep)
-            args.expert_episodes = max(expected_num_ep, args.workers)
+            args.expert_episodes = int(max(expected_num_ep * args.expert_edge_visits, args.workers))
+
+            # Make it divisible by args.workers to make it simpler
             print("args.expert_episodes", args.expert_episodes)
+            print("args.expert_episodes mod args.workers", args.expert_episodes % args.workers)
+            args.expert_episodes += args.workers  - (args.expert_episodes % args.workers)
+            print("args.expert_episodes", args.expert_episodes)
+            
 
         del graph
         agent_man = AgentManager(args, agent)
@@ -60,8 +68,11 @@ if __name__ == "__main__":
             help="Models save directory..")
     parser.add_argument("--load", action="store_true",
             help="Load saved models.")
+    parser.add_argument("--node_embs", default="",
+            help="Pretrained node embeddings to load into the network.")
     parser.add_argument("--min_ep", type=int, default=16,
             help="Minimum number of episodes that have to be elapsed before training.")
+
 
     graph_args = parser.add_argument_group("Graph")
     graph_args.add_argument("--edge_list", required=True,
@@ -91,9 +102,9 @@ if __name__ == "__main__":
 
 
     net_args = parser.add_argument_group("SparRL Network")
-    net_args.add_argument("--emb_size", type=int, default=256,
+    net_args.add_argument("--emb_size", type=int, default=128,
         help="Size of node and edge embeddings.")
-    net_args.add_argument("--hidden_size", type=int, default=256,
+    net_args.add_argument("--hidden_size", type=int, default=128,
         help="Number of hidden units in each FC layer for the SparRL network.")
     net_args.add_argument("--drop_rate", type=float, default=0.1,
         help="Dropout rate.")
@@ -113,7 +124,7 @@ if __name__ == "__main__":
                     help="Epsilon decay step used for decaying the epsilon value in epsilon-greedy exploration.")
     dqn_args.add_argument("--dqn_steps", type=int, default=10,
                     help="Number of steps to use for multistep DQN.")
-    dqn_args.add_argument("--tgt_tau", type=float, default=0.05,
+    dqn_args.add_argument("--tgt_tau", type=float, default=0.01,
                     help="The tau value to control the update rate of the target DQN parameters.")
     dqn_args.add_argument("--mem_cap", type=int, default=32768,
                     help="Replay memory capacity.")
@@ -129,6 +140,8 @@ if __name__ == "__main__":
                     help="Alpha used for proportional priority.")
     dqn_args.add_argument("--per_beta", type=float, default=0.4,
                     help="Beta used for proportional priority.")
+    dqn_args.add_argument("--noise_std", type=float, default=0.2,
+                    help="Standard deviation of sampled sigma parameters that control noise.")
 
     il_args = parser.add_argument_group("Imitation Learning")
     il_args.add_argument("--expert_lam", type=float, default=0.01,
@@ -143,7 +156,9 @@ if __name__ == "__main__":
                     help="Number of expert episodes.")
     il_args.add_argument("--expert_p", type=float, default=0.95,
                     help="Probability of observing all edges.")
-                    
+    il_args.add_argument("--expert_edge_visits", type=float, default=1,
+                    help="Number of times each edge should be expected to be visited during expert episodes.")
+
     ec_args = parser.add_argument_group("Expert Control")
     ec_args.add_argument("--ec_episodes", type=int, default=1,
                     help="Number of expert control episodes.")

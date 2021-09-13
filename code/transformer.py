@@ -46,7 +46,7 @@ class MultiHeadAttention(nn.Module):
         att_weights = F.softmax(scaled_att_logits, dim=-1)
         # print("mask", mask)
         # print("scaled_att_logits", scaled_att_logits)
-        # print("att_weights", att_weights)
+        #print("att_weights", att_weights)
         scaled_att = torch.matmul(att_weights, v)
 
         # (batch_size, fbs+hidden+enc_state, num_heads, depth)
@@ -86,8 +86,8 @@ class EncoderLayer(nn.Module):
         self.dropout1 = nn.Dropout(self.args.drop_rate)
         self.dropout2 = nn.Dropout(self.args.drop_rate)
 
-        self.norm1 = nn.LayerNorm(self.args.hidden_size, eps=1e-6)
-        self.norm2 = nn.LayerNorm(self.args.hidden_size, eps=1e-6)
+        self.norm1 = nn.LayerNorm(self.args.hidden_size, eps=1e-10)
+        self.norm2 = nn.LayerNorm(self.args.hidden_size, eps=1e-10)
 
     def forward(self, x, mask=None):
         # Perform MHA attention
@@ -109,21 +109,24 @@ class Encoder(nn.Module):
 
         self.enc_layers = nn.ModuleList([EncoderLayer(self.args) for _ in range(self.args.num_enc_layers)])
         
-        #self.dropout = nn.Dropout(self.args.drop_rate)
+        self.dropout = nn.Dropout(self.args.drop_rate)
 
     def forward(self, x, mask=None):
         """
             x: task emb, example emb, used fbs embs
         """
-        x = x * torch.sqrt(torch.tensor(self.args.hidden_size, dtype=torch.float32)).cuda()
+        #x = x * torch.sqrt(torch.tensor(self.args.hidden_size, dtype=torch.float32)).cuda()
         #print("PREV X: ", x)
         #x = self.dropout(x)
         # print("NOW X: ", x)
 
 
         # Run through all encoder fb
+        i = 0
         for enc_layer in self.enc_layers:
+            # print("layer", i)
             x = enc_layer(x, mask)
+            i += 1
 
         # Return output of last encoder fb
         return x
