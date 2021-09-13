@@ -81,7 +81,7 @@ if __name__ == "__main__":
             help="Indicates the graph should be directed.")
 
     env_args = parser.add_argument_group("Environment")
-    env_args.add_argument("--obj", default="pr",
+    env_args.add_argument("--obj", default="spearman",
             help="The minimization objective (spsp / pr).")
     env_args.add_argument("--subgraph_len", type=int, default=64,
         help="Size of the subgraphs.")
