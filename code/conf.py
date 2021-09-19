@@ -2,7 +2,7 @@
 import torch
 
 # Number of global statistics
-NUM_GLOBAL_STATS = 3
+NUM_GLOBAL_STATS = 1
 
 # Number of local statistics
 NUM_LOCAL_STATS = 2

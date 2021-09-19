@@ -11,13 +11,20 @@ class Graph:
     def __init__(self, args):
         self.args = args
         if self.args.is_dir:
+            print("Making directed.")
             self._G = nx.read_edgelist(self.args.edge_list, nodetype=int, create_using=nx.DiGraph)
         else:
-            if self.args.obj == "pr":
+            if self.args.obj == "spearman":
+                print("Making directed.")
                 self._G = nx.read_edgelist(self.args.edge_list, nodetype=int, create_using=nx.DiGraph)
             else:
+                print("Making undirected.")
                 self._G = nx.read_edgelist(self.args.edge_list, nodetype=int)
-
+        
+        # Relabel nodes to [1, |V|]
+        mapping = dict(zip(self._G.nodes, range(1,self.num_nodes+1)))
+        self._G = nx.relabel_nodes(self._G, mapping)
+        print("self.get_num_edges()", self.get_num_edges())
 
     def add_edge(self, src_id, dst_id):
         if not isinstance(src_id, int):
@@ -25,6 +32,7 @@ class Graph:
         if not isinstance(dst_id, int):
             dst_id = int(dst_id)
 
+        assert not self._G.has_edge(src_id, dst_id)
         self._G.add_edge(src_id, dst_id)
     
     def del_edge(self, src_id, dst_id):
@@ -33,6 +41,7 @@ class Graph:
         if not isinstance(dst_id, int):
             dst_id = int(dst_id)
 
+        assert self._G.has_edge(src_id, dst_id)
         self._G.remove_edge(src_id, dst_id)
     
     def get_num_edges(self):

@@ -117,16 +117,16 @@ class Encoder(nn.Module):
         """
         #x = x * torch.sqrt(torch.tensor(self.args.hidden_size, dtype=torch.float32)).cuda()
         #print("PREV X: ", x)
-        #x = self.dropout(x)
+        x = self.dropout(x)
         # print("NOW X: ", x)
 
 
         # Run through all encoder fb
-        i = 0
+        #i = 0
         for enc_layer in self.enc_layers:
-            # print("layer", i)
+            #print("layer", i)
             x = enc_layer(x, mask)
-            i += 1
+            #i += 1
 
         # Return output of last encoder fb
         return x

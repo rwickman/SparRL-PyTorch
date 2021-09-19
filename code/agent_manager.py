@@ -27,24 +27,28 @@ class ChildProcess:
 
 class AgentManager:
     """Manager multiple agent workers for multiprocess training."""
-    def __init__(self, args, rl_agent: RLAgent):
+    def __init__(self, args, rl_agent: RLAgent, results_man = None):
         self.args = args
         self._rl_agent = rl_agent
-        self._expert_control = ExpertControl(self.args)
+        if self.args.expert_episodes > 0:
+            self._expert_control = ExpertControl(self.args)
+
+        self.org_T_max = self.args.T_max
+        self.args.T_max = mp.Value("i", self.args.T_max)
         self._init_workers()
+
+        self._results_man = results_man
         
         self._man_file = os.path.join(self.args.save_dir, "agent_man.json")
+
         if self.args.load:
             self.load()
         else:
             self._agent_man_dict = {
-                "ec_triggered" : False    
-            }
-        
+                "ec_triggered" : False,
+                "eval_rewards" : []    
+            }        
 
-        
-        
-    
     def save(self):
         self._rl_agent.save()
         with open(self._man_file, "w") as f:
@@ -58,10 +62,18 @@ class AgentManager:
             self.args.expert_lam = 0.0
             self.args.expert_epsilon = -1.0
 
+    def update_T_max(self):
+        
+        self.args.T_max.value = min(max(
+            int(((self._rl_agent._train_dict["episodes"] + 1) / self.args.warmup_eps) * self.org_T_max), 2), self.org_T_max)
+
+        print("self.args.T_max.value", self.args.T_max.value)
+
     def _init_workers(self):
         """Initialize the child processes with duplicate environments."""
         self._child_processes = []
         print("Creating workers.")
+        self.update_T_max()
         for i in range(self.args.workers):
             # Stores the states from the AgentWorker
             state_queue = mp.Queue(1)
@@ -105,7 +117,7 @@ class AgentManager:
 
         # Get the average reward
         avg_reward = sum(rewards) / len(rewards)
-        
+
         # Reset for next episode
         self._rl_agent.reset(avg_reward)
 
@@ -119,7 +131,7 @@ class AgentManager:
         subgraphs = torch.zeros(batch_size, self.args.subgraph_len * 2, device=device, dtype=torch.int32)
         global_stats = torch.zeros(batch_size, 1, NUM_GLOBAL_STATS, device=device)
         local_stats = torch.zeros(batch_size, self.args.subgraph_len * 2, NUM_LOCAL_STATS, device=device)
-        masks = torch.zeros(batch_size, 1, 1, self.args.subgraph_len + 1, device=device)
+        masks = torch.zeros(batch_size, 1, 1, self.args.subgraph_len, device=device)
         
         for i, state in enumerate(states):
             subgraphs[i, :state.subgraph.shape[1]] = state.subgraph
@@ -132,6 +144,7 @@ class AgentManager:
     def run(self):
         # Run several batch of episodes
         for e_i in range(self.args.episodes // self.args.workers):
+            self.update_T_max()
             # Keep up with processes that have episodes still running
             nonterm_p_ids = list(range(len(self._child_processes)))
             
@@ -181,6 +194,12 @@ class AgentManager:
                 
                 t += 1
 
+
+            if self.args.T_eval > 0 and (e_i + 1) % self.args.eval_iter == 0:
+                eval_reward = self._results_man.run_rl_eval(self._rl_agent, self.args.T_eval)
+                self._agent_man_dict["eval_rewards"].append(eval_reward)
+                self._results_man.env.reset()
+
             # if self._rl_agent.is_ready_to_train:
             #     # Train the model
             #     print("Training")
@@ -196,24 +215,24 @@ class AgentManager:
             
 
             # Check if expert control should be triggered
-            if not self._agent_man_dict["ec_triggered"] and \
-                self.args.expert_episodes > 0 and \
-                not self.args.no_ec:
-                self._rl_agent._sparrl_net.eval()    
-                if self._expert_control._test_mean_reward(self._rl_agent):
-                    self._agent_man_dict["ec_triggered"] = True
-                    self.args.expert_lam = 0.0
-                    self.args.expert_epsilon = -1.0
+            # if not self._agent_man_dict["ec_triggered"] and \
+            #     self.args.expert_episodes > 0 and \
+            #     not self.args.no_ec:
+            #     self._rl_agent._sparrl_net.eval()    
+            #     if self._expert_control._test_mean_reward(self._rl_agent):
+            #         self._agent_man_dict["ec_triggered"] = True
+            #         self.args.expert_lam = 0.0
+            #         self.args.expert_epsilon = -1.0
 
-                self._rl_agent._sparrl_net.train()
+            #     self._rl_agent._sparrl_net.train()
             
-            print("Should Trigger EC:", self._agent_man_dict["ec_triggered"])
+            # print("Should Trigger EC:", self._agent_man_dict["ec_triggered"])
             
-            # if (e_i + 1) % self.args.save_iter == 0:
-            print("SAVING")
-            self.save()
-            print("DONE SAVING")
-        
+            if (e_i + 1) % self.args.save_iter == 0:
+                print("SAVING")
+                self.save()
+                print("DONE SAVING")
+
         print("SAVING")
         self.save()
         print("DONE SAVING")

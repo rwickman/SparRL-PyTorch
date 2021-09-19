@@ -16,32 +16,35 @@ def main(args):
     memory = PrioritizedExReplay(args)
     graph = Graph(args)
     # print("graph.num_nodes", graph.num_nodes)
-    # print("graph._G.nodes", graph._G.nodes)
 
-
-    agent = RLAgent(args, memory, graph.num_nodes, ExpertAgent(args, graph))
+    if args.expert_episodes > 0:
+        agent = RLAgent(args, memory, graph.num_nodes, ExpertAgent(args, graph))
+    else:
+        agent = RLAgent(args, memory, graph.num_nodes)
     
+
+    env = Environment(args, agent, graph, "cuda")
+    results_man = ResultsManager(args, agent, env)
     if args.eval:
-        env = Environment(args, agent, graph)
-        results_man = ResultsManager(args, agent, env)
         results_man.eval()
     else:
-        if args.expert_episodes > 0:
-            expected_num_ep = num_expert_episodes(
-                graph.get_num_edges(),
-                args)
-            print("expected_num_ep", expected_num_ep)
-            args.expert_episodes = int(max(expected_num_ep * args.expert_edge_visits, args.workers))
+        
+        # if args.expert_episodes > 0:
+        #     expected_num_ep = num_expert_episodes(
+        #         graph.get_num_edges(),
+        #         args)
+        #     print("expected_num_ep", expected_num_ep)
+        #     args.expert_episodes = int(max(expected_num_ep * args.expert_edge_visits, args.workers))
 
-            # Make it divisible by args.workers to make it simpler
-            print("args.expert_episodes", args.expert_episodes)
-            print("args.expert_episodes mod args.workers", args.expert_episodes % args.workers)
-            args.expert_episodes += args.workers  - (args.expert_episodes % args.workers)
-            print("args.expert_episodes", args.expert_episodes)
+        #     # Make it divisible by args.workers to make it simpler
+        #     print("args.expert_episodes", args.expert_episodes)
+        #     print("args.expert_episodes mod args.workers", args.expert_episodes % args.workers)
+        #     args.expert_episodes += args.workers  - (args.expert_episodes % args.workers)
+        #     print("args.expert_episodes", args.expert_episodes)
             
 
-        del graph
-        agent_man = AgentManager(args, agent)
+        # del graph
+        agent_man = AgentManager(args, agent, results_man)
         agent_man.run()
 
 if __name__ == "__main__":
@@ -72,6 +75,13 @@ if __name__ == "__main__":
             help="Pretrained node embeddings to load into the network.")
     parser.add_argument("--min_ep", type=int, default=16,
             help="Minimum number of episodes that have to be elapsed before training.")
+    parser.add_argument("--warmup_eps", type=int, default=1,
+            help="Minimum number of episodes that have to be elapsed before training.")
+    parser.add_argument("--decay_episodes", type=int, default=2048,
+            help="Number of episdoes elapsed before epsilon decays to minimum.")
+    parser.add_argument("--reward_scaler_window", type=int, default=4096,
+            help="Number of rewards save to compute statistics over rewards to standardize.")
+
 
 
     graph_args = parser.add_argument_group("Graph")
@@ -95,7 +105,7 @@ if __name__ == "__main__":
         help="Alpha value used for sampling number of edges to prune per episode from beta-binomial distribution.")
     env_args.add_argument("--T_beta", type=float, default=3.0,
         help="Beta value used for sampling number of edges to prune per episode from beta-binomial distribution.")
-    env_args.add_argument("--preprune_pct", type=float, default=0.5,
+    env_args.add_argument("--preprune_pct", type=float, default=0.9,
         help="Percentage of edges to preprune.")
     env_args.add_argument("--reward_factor", type=float, default=1.0,
         help="Reward scaling factor.")
@@ -104,11 +114,11 @@ if __name__ == "__main__":
     net_args = parser.add_argument_group("SparRL Network")
     net_args.add_argument("--emb_size", type=int, default=128,
         help="Size of node and edge embeddings.")
-    net_args.add_argument("--hidden_size", type=int, default=128,
+    net_args.add_argument("--hidden_size", type=int, default=256,
         help="Number of hidden units in each FC layer for the SparRL network.")
     net_args.add_argument("--drop_rate", type=float, default=0.1,
         help="Dropout rate.")
-    net_args.add_argument("--num_enc_layers", type=int, default=3,
+    net_args.add_argument("--num_enc_layers", type=int, default=1,
         help="Number of Transformer Encoder layers.")
     net_args.add_argument("--num_heads", type=int, default=4,
         help="Number attention heads.")
@@ -116,15 +126,15 @@ if __name__ == "__main__":
         help="Number of units in the pointwise FFN .")
 
     dqn_args = parser.add_argument_group("DQN")
-    dqn_args.add_argument("--epsilon", type=float, default=0.0,
+    dqn_args.add_argument("--epsilon", type=float, default=0.99,
                     help="Initial epsilon used for epsilon-greedy in DQN.")
-    dqn_args.add_argument("--min_epsilon", type=float, default=0.0,
+    dqn_args.add_argument("--min_epsilon", type=float, default=0.01,
                     help="Minimum epsilon value used for epsilon-greedy in DQN.")
     dqn_args.add_argument("--epsilon_decay", type=int, default=1024,
                     help="Epsilon decay step used for decaying the epsilon value in epsilon-greedy exploration.")
-    dqn_args.add_argument("--dqn_steps", type=int, default=10,
+    dqn_args.add_argument("--dqn_steps", type=int, default=1,
                     help="Number of steps to use for multistep DQN.")
-    dqn_args.add_argument("--tgt_tau", type=float, default=0.01,
+    dqn_args.add_argument("--tgt_tau", type=float, default=0.001,
                     help="The tau value to control the update rate of the target DQN parameters.")
     dqn_args.add_argument("--mem_cap", type=int, default=32768,
                     help="Replay memory capacity.")
@@ -140,11 +150,11 @@ if __name__ == "__main__":
                     help="Alpha used for proportional priority.")
     dqn_args.add_argument("--per_beta", type=float, default=0.4,
                     help="Beta used for proportional priority.")
-    dqn_args.add_argument("--noise_std", type=float, default=0.2,
+    dqn_args.add_argument("--noise_std", type=float, default=0.1,
                     help="Standard deviation of sampled sigma parameters that control noise.")
 
     il_args = parser.add_argument_group("Imitation Learning")
-    il_args.add_argument("--expert_lam", type=float, default=0.01,
+    il_args.add_argument("--expert_lam", type=float, default=0.001,
                     help="Weight of the expert margin classification loss.")
     il_args.add_argument("--expert_margin", type=float, default=0.001,
                     help="Margin value used for IL margin classification loss.") 
@@ -170,6 +180,15 @@ if __name__ == "__main__":
             help="Don't use expert control.")
 
     eval_args = parser.add_argument_group("Evaluation")
+    eval_args.add_argument("--T_eval", type=int, default=128,
+            help="Number of edges to prune for evaluation during training.")
+    eval_args.add_argument("--eval_iter", type=int, default=16,
+            help="Number of episodes elapsed during training until another evaluation episode is ran.")
+    eval_args.add_argument("--eval_batch_size", type=int, default=8,
+            help="Batch size for evaluation.")
+
+
+
     eval_args.add_argument("--eval", action="store_true",
             help="Evaluate.")
 

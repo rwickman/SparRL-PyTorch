@@ -1,7 +1,10 @@
 import torch
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 from agents.random_agent import RandomAgent
+from agents.rl_agent import RLAgent
+from conf import *
 
 class ResultsManager:
     def __init__(self, args, agent, env):
@@ -15,29 +18,102 @@ class ResultsManager:
     def eval(self):
         final_rewards = self.eval_agent(self.agent)
         print("final_rewards", final_rewards)
-        final_rewards_rand = self.eval_agent(self.rand_agent)
-        print("final_rewards_rand", final_rewards_rand)
         print("sparrl avg", sum(final_rewards) / len(final_rewards))
+        final_rewards_rand = self.eval_agent(self.rand_agent)
+        
         print("avg rand", sum(final_rewards_rand) / len(final_rewards_rand))
+        #print("final_rewards_rand", final_rewards_rand)
         #self.plot_results(final_rewards)
         
     def eval_agent(self, agent):
         final_rewards = []
         self.env.agent = agent
-
+        # self.env.preprune(self.args.T_max)
         for i in range(self.args.episodes):
-            final_rewards.append(self.run_episode(agent))
+            if isinstance(agent, RLAgent):
+                if self.args.eval_batch_size > 1:
+                    final_rewards.append(self.run_rl_eval(agent, self.args.T_max))
+                else:
+                    final_rewards.append(self.run_episode(agent))
+            else:
+                final_rewards.append(self.run_episode(agent))
+
             self.env.reset()
-        
+
         return final_rewards
+
+
+    # def run_rl_eval(self, agent):
+    #     for t in range(self.args.T_max//32):
+    #         state = self.env.create_state(self.args.subgraph_len, self.args.T_max, t*self.args.eval_batch_size)
+    #         #edge_idx = agent(state, argmax=True)
+    #         q_vals, valid_actions = agent.predict(state, argmax=True)
+    #         max_vals = q_vals.argsort(descending=True)
+    #         for edge_idx in range(32):
+    #             self.env.prune_edge(max_vals[edge_idx], state.subgraph)
+
+    #     return self.env.reward_man.compute_sparmanr()
+
+    def run_rl_eval(self, agent, T: int,):
+        org_subgraph_len = self.args.subgraph_len 
+        self.args.subgraph_len = self.args.eval_batch_size * self.args.subgraph_len
+        num_left = T % self.args.eval_batch_size
+        num_batches = T//self.args.eval_batch_size
+        
+        if num_left >= 1:
+            num_batches += 1
+        for t in tqdm(range(num_batches)):
+            state = self.env.create_state(self.args.subgraph_len, T, t*self.args.eval_batch_size)
+            state.subgraph = state.subgraph.reshape(-1, org_subgraph_len*2)
+            # TODO: Have max_T and t be descending
+            #state.global_stats = state.global_stats.repeat(self.args.eval_batch_size, 1, 1)
+            
+            # Create new global_stats
+            t_arr = torch.arange(t*self.args.eval_batch_size, (t+1)*self.args.eval_batch_size, device=device)
+            T_arr = torch.tensor(T, device=device).repeat(self.args.eval_batch_size)
+            prune_left = torch.log(T_arr - t_arr).unsqueeze(1)
+            num_edges_left = torch.tensor(self.env._graph.get_num_edges(), device=device).repeat(self.args.eval_batch_size)
+            num_edges_left = torch.log(num_edges_left - torch.arange(0, self.args.eval_batch_size, device=device)).unsqueeze(1)
+            
+            #print("num_edges_left - torch.arange(0, self.args.eval_batch_size)", num_edges_left - torch.arange(0, self.args.eval_batch_size))
+            
+            #state.global_stats = torch.cat((num_edges_left, torch.zeros(self.args.eval_batch_size, 1)), -1).unsqueeze(1)
+            state.global_stats = num_edges_left.unsqueeze(1)
+            state.global_stats = state.global_stats.to(device)
+            state.local_stats = state.local_stats.reshape(self.args.eval_batch_size, -1, NUM_LOCAL_STATS)
+
+            # print("state.mask.shape", state.mask.shape)
+            #print("org_subgraph_len", org_subgraph_len)
+            state.mask = state.mask.reshape(-1, 1, 1, org_subgraph_len)
+            # print("")
+            # print("state.mask", state.mask)
+            # print("state.mask.shape", state.mask.shape)
+            # print("state.global_stats.shape", state.global_stats.shape)
+            # print("state.local_stats", state.local_stats.shape)
+            #state.mask = torch.cat(
+            #    (state.mask, torch.zeros(self.args.eval_batch_size,1,1,1, device=device)), -1)
+            edge_idxs = agent(state, argmax=True)
+            # Prune batch of edges
+            for i, edge_idx in enumerate(edge_idxs):
+                if num_left >= 1 and t + 1 == num_batches and i > num_left:
+                    break
+                self.env.prune_edge(edge_idx, state.subgraph[i:i+1])
+
+        self.args.subgraph_len = org_subgraph_len
+        print("E:", self.env._graph.get_num_edges())
+        return self.env.reward_man.compute_sparmanr()
+
 
     def run_episode(self, agent):
         #self.env.preprune(self.args.T_eval)
         for t in range(self.args.T_max):
             state = self.env.create_state(self.args.subgraph_len, self.args.T_max, t)
-            #print("state", state.subgraph)
-            edge_idx = agent(state)
-            #print("edge_idx", edge_idx)
+            
+            if isinstance(agent, RLAgent):
+                edge_idx = agent(state, argmax=True)
+            else:    
+                edge_idx = agent(state)
+
             self.env.prune_edge(edge_idx, state.subgraph)
         
         return self.env.reward_man.compute_sparmanr()

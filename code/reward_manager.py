@@ -45,6 +45,9 @@ class RewardManager:
             # By default use page rank
             cur_reward =self._compute_page_rank_reward()
         
+        # Multiple by scale factor
+        cur_reward = cur_reward * self.args.reward_factor
+
         return cur_reward
 
     def _compute_page_rank_reward(self):
@@ -175,6 +178,7 @@ class RewardManager:
     def reset(self, part=None):
         """Reset rewards states."""
         self.setup(part)
+        
         
     # def _load_reward_data(self):
     #     with self._reward_lock:

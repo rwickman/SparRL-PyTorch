@@ -13,11 +13,54 @@ from agents.storage import State
 from agents.expert_agent import ExpertAgent
 
 
+class RewardScaler:
+    def __init__(self, args):
+        self.args = args
+        self._reward_file = os.path.join(self.args.save_dir, "reward_stats.pt")
+
+        # Load saved rewards
+        if self.args.load and not self.args.eval:
+            print("Loading rewards")
+            self.load()
+        else:
+            self._rewards = torch.zeros(self.args.reward_scaler_window, device=device)
+            self._end = 0
+    
+        
+    
+    def add_reward(self, reward):
+        """Add a reward to compute statistics over."""
+        if self._end < self.args.reward_scaler_window:
+            self._rewards[self._end] = reward
+            self._end += 1
+        
+    def scale_reward(self, reward):
+        """Scale a given reward."""
+        if self._end >= 2: 
+            reward = (reward - self._rewards[:self._end].mean()) / self._rewards[:self._end].std()
+        
+        return reward
+
+    def save(self):
+        reward_dict = {
+            "rewards" : self._rewards,
+            "end" : self._end
+        }
+
+        torch.save(reward_dict, self._reward_file)
+
+    def load(self):
+        reward_dict = torch.load(self._reward_file, map_location=device)
+        self._rewards = reward_dict["rewards"]
+        self._end = reward_dict["end"]
+
+
 class RLAgent(Agent):
     def __init__(self, args, memory, num_nodes: int, expert_agent: ExpertAgent = None):
         super().__init__(args)
         self._memory = memory
         self._expert_agent = expert_agent
+        self._reward_scaler = RewardScaler(self.args)
 
         # Number of elapsed parameter update steps
         self._train_dict = {
@@ -25,8 +68,8 @@ class RLAgent(Agent):
             "episodes" : 0,
             "avg_rewards" : [],
             "mse_losses" : [],
-            "sigma_mean_abs_1": [],
-            "sigma_mean_abs_2": []
+            # "sigma_mean_abs_1": [],
+            # "sigma_mean_abs_2": []
         }
         
         # Create SparRL networks
@@ -37,9 +80,6 @@ class RLAgent(Agent):
 
         # Create optimizer and LR scheduler to decay LR
         self._optim = optim.Adam(self._sparrl_net.parameters(), self.args.lr)
-        self._lr_scheduler = optim.lr_scheduler.MultiplicativeLR(
-            self._optim,
-            lr_lambda=lambda e: self.args.lr_gamma)
         
         self._gam_arr = self._create_gamma_arr()
         self._model_file = os.path.join(self.args.save_dir, "sparrl_net.pt")
@@ -54,13 +94,19 @@ class RLAgent(Agent):
         
 
 
-    # @property
-    # def epsilon_threshold(self):
-    #     """Return the current epsilon value used for epsilon-greedy exploration."""
-    #     # Adjust for number of expert episodes that have elapsed
-    #     cur_step = max(self._train_dict["update_step"] - self.args.expert_episodes * self.args.train_iter, 0)
-    #     return self.args.min_epsilon + (self.args.epsilon - self.args.min_epsilon) * \
-    #         math.exp(-1. * cur_step / self.args.epsilon_decay)
+    @property
+    def epsilon_threshold(self):
+        """Return the current epsilon value used for epsilon-greedy exploration."""
+        # Adjust for number of expert episodes that have elapsed
+        #return self.args.min_epsilon#self.args.epsilon
+        eps = min(((self.args.decay_episodes - self._train_dict["episodes"]) / (self.args.decay_episodes)) * self.args.epsilon, self.args.epsilon) 
+        return max(eps, self.args.min_epsilon)
+
+        # eps = min(((self.args.episodes - self._train_dict["episodes"]) / (self.args.episodes)) * self.args.epsilon, self.args.epsilon) 
+        # return max(eps, self.args.min_epsilon)
+        # cur_step = max(self._train_dict["update_step"] - self.args.expert_episodes, 0)
+        # return self.args.min_epsilon + (self.args.epsilon - self.args.min_epsilon) * \
+        #     math.exp(-1. * cur_step / self.args.epsilon_decay)
     
     @property
     def is_ready_to_train(self) -> bool:
@@ -84,8 +130,7 @@ class RLAgent(Agent):
         model_dict = {
             "sparrl_net" : self._sparrl_net.state_dict(),
             "sparrl_net_tgt" : self._sparrl_net_tgt.state_dict(),
-            "optimizer" : self._optim.state_dict(),
-            "lr_scheduler" : self._lr_scheduler.state_dict()
+            "optimizer" : self._optim.state_dict()
         }
 
         torch.save(model_dict, self._model_file)
@@ -95,6 +140,7 @@ class RLAgent(Agent):
 
         # Save the experience replay
         self._memory.save()
+        self._reward_scaler.save()
 
     def load(self):
         """Load the models."""
@@ -103,7 +149,6 @@ class RLAgent(Agent):
         self._sparrl_net.load_state_dict(model_dict["sparrl_net"])
         self._sparrl_net_tgt.load_state_dict(model_dict["sparrl_net_tgt"])
         self._optim.load_state_dict(model_dict["optimizer"])
-        self._lr_scheduler.load_state_dict(model_dict["lr_scheduler"])
 
         with open(self._train_dict_file) as f:
             self._train_dict = json.load(f)
@@ -129,13 +174,13 @@ class RLAgent(Agent):
 
     def _sample_action(self, q_vals: torch.Tensor, argmax=False) -> int:
         """Sample an action from the given Q-values."""
-        # if not argmax and self.epsilon_threshold >= np.random.rand():
-        #     # Sample a random action
-        #     action = np.random.randint(q_vals.shape[0])
-        # else:
-        with torch.no_grad():
+        if not argmax and self.epsilon_threshold >= np.random.rand():
+            # Sample a random action
+            action = np.random.randint(q_vals.shape[0])
+        else:
+            with torch.no_grad():
             # Get action with maximum Q-value
-            action = q_vals.argmax()
+                action = q_vals.argmax()
 
         return int(action)
 
@@ -149,6 +194,7 @@ class RLAgent(Agent):
         rewards = torch.zeros(self.args.dqn_steps)
         for i in reversed(range(len(self._ex_buffer))):
             rewards[0] = self._ex_buffer[i].reward
+            self._reward_scaler.add_reward(self._ex_buffer[i].reward)
             cur_gamma = self.args.gamma
 
             # Update the experience reward to be the n-step return
@@ -195,14 +241,14 @@ class RLAgent(Agent):
         subgraphs = torch.zeros(self.args.batch_size, self.args.subgraph_len*2, device=device, dtype=torch.int32)
         global_stats = torch.zeros(self.args.batch_size, 1, NUM_GLOBAL_STATS, device=device)
         local_stats = torch.zeros(self.args.batch_size, self.args.subgraph_len*2, NUM_LOCAL_STATS, device=device)
-        masks = torch.zeros(self.args.batch_size, 1, 1, self.args.subgraph_len + 1, device=device)
+        masks = torch.zeros(self.args.batch_size, 1, 1, self.args.subgraph_len, device=device)
 
         actions = []
         rewards = torch.zeros(self.args.batch_size, device=device)
         next_subgraphs = torch.zeros(self.args.batch_size, self.args.subgraph_len*2, device=device, dtype=torch.int32)
         next_global_stats = torch.zeros(self.args.batch_size, 1, NUM_GLOBAL_STATS, device=device)
         next_local_stats = torch.zeros(self.args.batch_size, self.args.subgraph_len*2, NUM_LOCAL_STATS, device=device)
-        next_masks = torch.zeros(self.args.batch_size, 1, 1, self.args.subgraph_len + 1, device=device)
+        next_masks = torch.zeros(self.args.batch_size, 1, 1, self.args.subgraph_len, device=device)
         
         next_state_mask = torch.zeros(self.args.batch_size, device=device, dtype=torch.bool)
         is_experts = torch.zeros(self.args.batch_size, dtype=torch.bool, device=device)
@@ -221,7 +267,7 @@ class RLAgent(Agent):
             subgraphs[i, :ex.state.subgraph.shape[1]], global_stats[i], local_stats[i, :ex.state.local_stats.shape[1]] = ex.state.subgraph, ex.state.global_stats, ex.state.local_stats
             
             actions.append(ex.action)
-            rewards[i] = ex.reward
+            rewards[i] = self._reward_scaler.scale_reward(ex.reward)
             is_experts[i] = bool(ex.is_expert)
             gammas[i] = ex.gamma
             if ex.next_state is not None:
@@ -322,9 +368,9 @@ class RLAgent(Agent):
 
         # Compute L1 loss
         td_errors = td_targets  - q_vals
-        loss = torch.mean(td_errors.abs()  *  is_ws)
+        #loss = torch.mean(td_errors.abs()  *  is_ws)
         #print("loss", loss)
-        #loss = torch.mean(td_errors ** 2  *  is_ws)
+        loss = torch.mean(td_errors ** 2  *  is_ws)
 
         self._memory.update_priorities(indices, td_errors.detach().abs(), is_experts)
         
@@ -339,9 +385,11 @@ class RLAgent(Agent):
             self._sparrl_net.parameters(),
             self.args.max_grad_norm)
 
+        #print("node_enc.node_embs.weight.grad", self._sparrl_net.node_enc.node_embs.weight.grad)
         # print("node_enc.node_embs.weight.grad", self._sparrl_net.node_enc.node_embs.weight.grad)
-        # print("node_enc.node_embs.weight.grad", self._sparrl_net.node_enc.node_embs.weight.grad)
-        # print("self._sparrl_net.q_fc_1.weight_mu.grad", self._sparrl_net.q_fc_1.weight_mu.grad, self._sparrl_net.q_fc_1.weight_sigma.is_leaf)
+        # print("self._sparrl_net.q_fc_1.weight_mu.grad", self._sparrl_net.q_fc_1.weight.grad)
+        # print("self._sparrl_net.q_fc_2.weight_mu.grad", self._sparrl_net.q_fc_2.weight.grad)
+
         # print("self._sparrl_net.q_fc_1.weight_sigma.grad", self._sparrl_net.q_fc_1.weight_sigma.grad, self._sparrl_net.q_fc_1.weight_mu.is_leaf)
         # print("self._sparrl_net.q_fc_2.weight_mu.grad", self._sparrl_net.q_fc_2.weight_mu.grad)
         # print("self._sparrl_net.q_fc_2.weight_sigma.grad", self._sparrl_net.q_fc_2.weight_sigma.grad)
@@ -367,16 +415,17 @@ class RLAgent(Agent):
         # Update train info
         self._train_dict["update_step"] += 1
         self._train_dict["mse_losses"].append(float(loss.detach()))
-        self._train_dict["sigma_mean_abs_1"].append(
-            float(self._sparrl_net.q_fc_1.sigma_mean_abs()))
-        self._train_dict["sigma_mean_abs_2"].append(
-            float(self._sparrl_net.q_fc_2.sigma_mean_abs()))
+        # self._train_dict["sigma_mean_abs_1"].append(
+        #     float(self._sparrl_net.v_fc_1.sigma_mean_abs()))
+        # self._train_dict["sigma_mean_abs_2"].append(
+        #     float(self._sparrl_net.v_fc_2.sigma_mean_abs()))
 
         # Update the DQN target parameters
         self._update_target()
         
         # Print out q_values and td_targets for debugging/progress updates
-        if (self._train_dict["update_step"] + 1) % 64 == 0:
+        if (self._train_dict["update_step"] + 1) % 8 == 0:
+            print("self.epsilon_threshold:", self.epsilon_threshold)
             print("loss", loss)
             print("expert_margin_loss", expert_margin_loss* self.args.expert_lam)
             print("q_values", q_vals)
@@ -384,6 +433,14 @@ class RLAgent(Agent):
             print("rewards", rewards)
 
         return float(loss.detach())
+
+    def predict(self, state, argmax=False):
+        batch_size = state.subgraph.shape[0]
+        valid_actions = self._get_valid_edges(state.subgraph[0])
+        q_vals = self._sparrl_net(state)
+        return q_vals, valid_actions
+
+
 
     def __call__(self, state, argmax=False) -> int:
         """Make a sparsification decision based on the state.
@@ -402,7 +459,6 @@ class RLAgent(Agent):
         else:
             # Get the q-values for the state
             q_vals = self._sparrl_net(state)
-
             # Sample an action (i.e., edge to prune)
             if batch_size > 1:
                 action = []

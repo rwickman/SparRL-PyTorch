@@ -95,7 +95,7 @@ class PrioritizedExReplay:
         sample_ps = priorities / self._sum_tree.total()
         
         # Increase per beta by the number of episodes that have elapsed
-        cur_per_beta = min(num_episodes/self.args.episodes, 1) * (1-self.args.per_beta) + self.args.per_beta
+        cur_per_beta = self.args.per_beta#min(num_episodes/self.args.episodes, 1) * (1-self.args.per_beta) + self.args.per_beta
         # print("\n\ncur_per_beta", cur_per_beta, "\n\n")
 
         is_ws = (sample_ps  * self.cur_cap()) ** -cur_per_beta
@@ -104,7 +104,9 @@ class PrioritizedExReplay:
         # Normalize to scale the updates downwards
         is_ws  = is_ws / is_ws.max()
         #print("is_ws", is_ws)
-
+        # print("is_ws", is_ws)
+        # print("cur_per_beta", cur_per_beta)
+        # print("indices", indices)
         return is_ws, exps, indices
 
     def cur_cap(self):

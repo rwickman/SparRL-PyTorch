@@ -74,32 +74,36 @@ class NodeEncoder(nn.Module):
         if not self.args.load and self.args.node_embs:
             self.load_pretrained_embs()
 
-        self.fc_1 = nn.Linear(self.args.hidden_size + NUM_LOCAL_STATS, self.args.hidden_size)
+        self.fc_1 = nn.Linear(self.args.hidden_size + NUM_LOCAL_STATS + 1, self.args.hidden_size)
         self.fc_2 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
 
-        # self.norm_1 = nn.LayerNorm(self.args.hidden_size, eps=1e-10)
+        #self.norm_1 = nn.LayerNorm(self.args.hidden_size, eps=1e-6)
         # self.norm_2 = nn.LayerNorm(self.args.hidden_size, eps=1e-10)
-        # self.dropout_1 = nn.Dropout(self.args.drop_rate)
+        #self.dropout_1 = nn.Dropout(self.args.drop_rate)
         # self.dropout_2 = nn.Dropout(self.args.drop_rate)
         
     def load_pretrained_embs(self):
         weights_dict = torch.load(self.args.node_embs)
         # Add pad embedding
         pretrained_node_embs = torch.cat((self.node_embs(torch.tensor([0])), weights_dict["node_embs"])) 
-        self.node_embs = self.node_embs.from_pretrained(pretrained_node_embs, freeze=True)
+        self.node_embs = self.node_embs.from_pretrained(pretrained_node_embs, freeze=False)
 
     def forward(self, subgraph: torch.Tensor, local_stats: torch.Tensor):
         # Get initial node embeddings
         node_embs = self.node_embs(subgraph)
+
         # Combine node embeddings with current local statistics
-        node_embs = self.fc_1(
-            torch.cat((node_embs, local_stats), -1))
+        node_embs = F.relu(self.fc_1(
+            torch.cat((node_embs, local_stats), -1)))
         #node_embs = self.norm_1(node_embs)
-        node_embs = F.relu(node_embs)
+        #node_embs = F.relu(node_embs)
 
         # Create final node embeddings
-        node_embs = self.fc_2(node_embs)
-
+        node_embs = F.relu(self.fc_2(node_embs))
+        # node_embs = self.norm_1(node_embs)
+        #node_embs = self.dropout_1(node_embs)
+        #node_embs = F.relu(node_embs)
+        
         return node_embs 
 
 class EdgeEncoder(nn.Module):
@@ -109,65 +113,47 @@ class EdgeEncoder(nn.Module):
         self.args = args
 
         # Used to combine the embeddings
-        self.edge_conv1d = nn.Conv1d(
-            self.args.hidden_size,
-            self.args.hidden_size,
-            kernel_size=2,
-            stride=2)
+        # self.edge_conv1d = nn.Conv1d(
+        #     self.args.hidden_size,
+        #     self.args.hidden_size,
+        #     kernel_size=2,
+        #     stride=2)
+        self.edge_fc_1 = nn.Linear(self.args.hidden_size * 2, self.args.hidden_size * 2)
+        self.edge_fc_2 = nn.Linear(self.args.hidden_size * 2, self.args.hidden_size)
         #self.norm_1 = nn.LayerNorm(self.args.hidden_size, eps=1e-10)
         #self.dropout_1 = nn.Dropout(self.args.drop_rate)
 
-        # self.norm_1 = nn.LayerNorm(self.args.hidden_size, eps=1e-10)
-        # self.norm_2 = nn.LayerNorm(self.args.hidden_size, eps=1e-10)
+        # self.norm_1 = nn.LayerNorm(self.args.hidden_size, eps=1e-6)
+        # # self.norm_2 = nn.LayerNorm(self.args.hidden_size, eps=1e-10)
         # self.dropout_1 = nn.Dropout(self.args.drop_rate)
         # self.dropout_2 = nn.Dropout(self.args.drop_rate)
 
         # Used produce to produce the final edge embedding
-        self.edge_fc = nn.Linear(self.args.hidden_size, self.args.hidden_size)
+        self.edge_fc_3 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
 
     def forward(self, node_embs: torch.Tensor):
         # Combine the node embeddings to create edge embeddings
-        edge_embs = F.relu(self.edge_conv1d(node_embs.transpose(1,2)))
+        #print("node_embs", node_embs)
+        node_embs = node_embs.reshape(node_embs.shape[0], -1, self.args.hidden_size * 2)
+        #print("node_embs", node_embs)
+        #print("node_embs.count_nonzero()", node_embs.count_nonzero(), node_embs.shape)
+        edge_embs = F.relu(self.edge_fc_1(node_embs))
+        edge_embs = F.relu(self.edge_fc_2(edge_embs))
+
+        #print("edge_embs.count_nonzero()", edge_embs.count_nonzero())
         # edge_embs = self.norm_1(edge_embs.transpose(1,2))
         # edge_embs = self.dropout_1(edge_embs)
         
         # Create the final edge embeddings
-        edge_embs = self.edge_fc(edge_embs.transpose(1,2))
+        edge_embs = F.relu(self.edge_fc_3(edge_embs))
+        # edge_embs = self.norm_1(edge_embs)
+        #edge_embs = self.dropout_1(edge_embs)
         # edge_embs = self.edge_fc(edge_embs)
         # edge_embs = self.norm_2(edge_embs)
         # edge_embs = self.dropout_2(edge_embs)
 
         return edge_embs
 
-class GlobalStatisticsEncoder(nn.Module):
-    """Create an embedding from global statistics about the graph."""
-    def __init__(self, args):
-        super().__init__()
-        self.args = args
-
-        self.fc_1 = nn.Linear(NUM_GLOBAL_STATS, self.args.hidden_size)
-        self.fc_2 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
-
-        # self.norm_1 = nn.LayerNorm(self.args.hidden_size, eps=1e-10)
-        # self.norm_2 = nn.LayerNorm(self.args.hidden_size, eps=1e-10)
-        # self.dropout_1 = nn.Dropout(self.args.drop_rate)
-        # self.dropout_2 = nn.Dropout(self.args.drop_rate)
-
-
-
-    def forward(self, global_stats):
-        global_stats_emb = self.fc_1(global_stats)
-        #global_stats_emb = self.norm_1(global_stats_emb)
-        global_stats_emb = F.relu(global_stats_emb)
-        # global_stats_emb = self.norm_1(global_stats_emb)
-        # global_stats_emb = self.dropout_1(global_stats_emb)
-
-        # Create final statistics embedding
-        global_stats_emb = self.fc_2(global_stats_emb)
-        # global_stats_emb = self.norm_2(global_stats_emb)
-        # global_stats_emb = self.dropout_2(global_stats_emb)
-        
-        return global_stats_emb
         
 class SparRLNet(nn.Module):
     def __init__(self, args, num_nodes: int):
@@ -177,48 +163,90 @@ class SparRLNet(nn.Module):
         
         
         self.node_enc = NodeEncoder(self.args, self.num_nodes)
-
-        self.global_stats_enc = GlobalStatisticsEncoder(self.args)
-        self.edge_mha_enc = Encoder(self.args)
-
-        self.norm_1 = nn.LayerNorm(self.args.hidden_size, eps=1e-10)
-
         self.edge_enc = EdgeEncoder(self.args)
+        # self.global_stats_enc = GlobalStatisticsEncoder(self.args)
+        # self.norm_1 = nn.LayerNorm(self.args.hidden_size)
+        # self.edge_mha_enc = Encoder(self.args)
+
+        
+
+        # # self.share_gate = nn.Linear(self.args.hidden_size, 1)
+        # # self.share_gate_act = nn.Sigmoid()
         
         # Mapping to q-values for pruning edges        
         #self.q_fc_1 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
-        #self.q_fc_2 = nn.Linear(self.args.hidden_size, 1)
+        #self.v_fc_2 = nn.Linear(self.args.hidden_size, 1)
         
-        self.q_fc_1 = NoisyLinear(self.args, self.args.hidden_size, self.args.hidden_size)
-        self.q_fc_2 = NoisyLinear(self.args, self.args.hidden_size, 1)
+        # self.v_fc_1 = NoisyLinear(self.args, self.args.hidden_size, self.args.hidden_size)
+        # self.v_fc_2 = NoisyLinear(self.args, self.args.hidden_size, 1)
+
+        # self.adv_fc_1 = NoisyLinear(self.args, self.args.hidden_size, self.args.hidden_size)
+        # self.adv_fc_2 = NoisyLinear(self.args, self.args.hidden_size, 1)
+
+
+        # self.v_fc_1 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
+        # self.v_fc_2 = nn.Linear(self.args.hidden_size, 1)
+
+        # self.adv_fc_1 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
+        # self.adv_fc_2 = nn.Linear(self.args.hidden_size, 1)
+
+
+        self.q_fc_1 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
+        self.q_fc_2 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
+        self.q_fc_3 = nn.Linear(self.args.hidden_size, 1)
+        # self.q_fc_3 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
+        # self.q_fc_4 = nn.Linear(self.args.hidden_size, 1)
+        #self.q_fc_1 = NoisyLinear(self.args, self.args.hidden_size, self.args.hidden_size)
+        #self.q_fc_2 = NoisyLinear(self.args, self.args.hidden_size, 1)
 
     def reset_noise(self):
-        self.q_fc_1.reset_noise()
-        self.q_fc_2.reset_noise()
+        pass
+        # self.v_fc_1.reset_noise()
+        # self.v_fc_2.reset_noise()
 
+        # self.adv_fc_1.reset_noise()
+        # self.adv_fc_2.reset_noise()
+        #self.q_fc_1.reset_noise()
+        #self.q_fc_2.reset_noise()
 
     def forward(self, state) -> torch.Tensor:
         batch_size = state.subgraph.shape[0]
 
         # Create node embedding
-        node_embs = self.node_enc(state.subgraph, state.local_stats)
+        node_embs = self.node_enc(state.subgraph, torch.cat((state.local_stats, state.global_stats.repeat(1, state.local_stats.shape[1], 1)), -1))
 
         # Create edge embeddings
-        edge_embs = self.edge_enc(node_embs)
+        embs = self.edge_enc(node_embs)
 
         # Create global statistics embedding
-        global_stats_emb = self.global_stats_enc(state.global_stats)
+        # global_stats_emb = self.global_stats_enc(state.global_stats)
         
         # Perform MHA over edge embeddings (batch size, # edges, hidden size)
-        embs = self.norm_1(torch.cat((global_stats_emb, edge_embs), 1))
-        embs = self.edge_mha_enc(
-            embs, state.mask)
-
-        # Pass the edge embeddings through FC to get Q-values
-        q_vals = F.relu(self.q_fc_1(embs[:, 1:]))
-        q_vals = self.q_fc_2(q_vals)
+        # embs = self.norm_1(embs)
+        # embs = self.edge_mha_enc(
+        #     embs, state.mask) 
         
+        # # # Pass the edge embeddings through FC to get Q-values
+        # v_vals = F.relu(self.v_fc_1(embs))
+        # v_vals = self.v_fc_2(v_vals)
+        
+        # # # # Pass the edge embeddings through FC to get advantage values
+        # adv_vals = F.relu(self.adv_fc_1(embs))
+        # adv_vals = self.adv_fc_2(adv_vals)
 
+        # # # Derive the Q-values
+        # q_vals = v_vals + adv_vals - adv_vals.mean(dim=-1, keepdim=True)
+        
+        # share_vals = self.share_gate_act(self.share_gate(embs))
+        # # print("share_vals", share_vals)
+        # embs = (1-share_vals) * edge_embs + share_vals * embs 
+
+        q_vals = F.relu(self.q_fc_1(embs))
+        q_vals = F.relu(self.q_fc_2(q_vals))
+
+        # print("q_vals", q_vals)
+        q_vals = self.q_fc_3(q_vals)
+        
         if batch_size == 1:
             return q_vals.view(-1)
         else:
@@ -226,5 +254,6 @@ class SparRLNet(nn.Module):
             # print("q_vals", q_vals)
             # print("q_vals.shape", q_vals.shape)
             # print("embs.shape", embs.shape, "\n\n")
-            
+            #print("q_vals.view(q_vals.shape[0], q_vals.shape[1])", q_vals.view(q_vals.shape[0], q_vals.shape[1]))
+            #print("q_vals", q_vals)
             return q_vals.view(q_vals.shape[0], q_vals.shape[1])

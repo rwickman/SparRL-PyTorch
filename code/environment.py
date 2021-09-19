@@ -10,12 +10,12 @@ from agents.storage import Experience, State
 
 class Environment:
     """Handles environment related tasks/management during an episode."""
-    def __init__(self, args, agent, graph):
+    def __init__(self, args, agent, graph, device="cpu"):
         self.args = args        
         self.agent = agent
         self._graph = graph
         self._org_num_edges = self._graph.get_num_edges()
-        self.args.T_max = min(self._org_num_edges, self.args.T_max) 
+        #self.args.T_max = min(self._org_num_edges, self.args.T_max) 
 
         # Setup the RewardManager to manage rewards 
         self.reward_man = RewardManager(args, graph)
@@ -23,7 +23,8 @@ class Environment:
         
         self._removed_edges = set()
 
-        self._device = "cuda" if self.args.eval else "cpu" 
+        self._device = device
+        print("self._device", self._device)
 
     @property
     def num_nodes(self):
@@ -38,6 +39,7 @@ class Environment:
         self._removed_edges = set()
 
         self.agent.reset()
+        self.reward_man.reset()
 
     def _sample_T(self) -> int:
         """Sample the number of edges to prune from a Beta-binomial distribution.
@@ -47,10 +49,13 @@ class Environment:
         """
 
         # Predict a point in the valid range, shifting by 1
-        T = betabinom.ppf(random.random(), self.args.T_max-1, self.args.T_alpha, self.args.T_beta, loc=1)
+        #T = betabinom.ppf(random.random(), self.args.T_max-1, self.args.T_alpha, self.args.T_beta, loc=1)
 
         # Clip between valid bounds
-        return int(np.clip(T, 1, self.args.T_max))
+        #return int(np.clip(T, 1, self.args.T_max))
+        T = self.args.T_max.value#random.randint(2, self.args.T_max.value)
+        # T = 1
+        return T
 
     def sample_subgraph(self, subgraph_len: int) -> list:
         """Sample a subgraph of edges.
@@ -97,9 +102,11 @@ class Environment:
 
         # Create global statistics
         prune_left = np.log(T-t)
-        num_edges_left = np.log(self._graph.get_num_edges())
+        #num_edges_left = np.log(self._graph.get_num_edges())
+        num_edges_left = self._graph.get_num_edges()/self._org_num_edges
         preprune_pct = num_preprune / self._org_num_edges
-        global_stats = torch.tensor([[[prune_left, num_edges_left, preprune_pct]]], device=self._device, dtype=torch.float32)
+        #global_stats = torch.tensor([[[prune_left, num_edges_left, preprune_pct]]], device=self._device, dtype=torch.float32)
+        global_stats = torch.tensor([[[num_edges_left]]], device=self._device, dtype=torch.float32)
         
         # Create local node statistics
         node_ids = []
@@ -138,9 +145,9 @@ class Environment:
 
 
         # Create the mask
-        mask = torch.zeros(1, 1, 1, self.args.subgraph_len + 1, device=self._device)
+        mask = torch.zeros(1, 1, 1, self.args.subgraph_len, device=self._device)
         # Mask out null edges (if this subgraph is shorter than expected)
-        mask[0, 0, 0, subgraph_len+1:] = 1
+        mask[0, 0, 0, subgraph_len:] = 1
         # # Don't mask out the global stats
         # mask[0, 0, 0, -1] = 0
         
@@ -197,13 +204,19 @@ class Environment:
         # Preprune edges
         num_preprune = self.preprune(T)
 
+        # Throw away prepruned reward
+        self.reward_man.compute_reward()
+        #print("INIT SPEARMAN: ", self.reward_man._prev_spearmanr)
+        
         print("T", T)
+        # Sample subgraph length
+        subgraph_len = self.args.subgraph_len#random.randint(2, self.args.subgraph_len)
 
         # Prune edges
         for t in range(T):
             # Create the current state
             state = self.create_state(
-                self.args.subgraph_len, T, t, num_preprune)
+                subgraph_len, T, t, num_preprune)
             
             if t > 0:
                 # Add the experience to the agent
@@ -226,11 +239,19 @@ class Environment:
 
             prev_state = state
 
+        
+        # Acquire a next_state, if available
+        if self._graph.get_num_edges() > 1:
+            next_state = self.create_state(
+                subgraph_len, T, t, num_preprune)
+        else:
+            next_state = None
+
         # Add the last experience
         self.agent.add_ex(
             Experience(
                 prev_state,
-                None,
+                next_state,
                 edge_idx,
                 reward))
 
