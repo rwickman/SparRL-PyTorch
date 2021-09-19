@@ -70,8 +70,12 @@ class NodeEncoder(nn.Module):
         self.num_nodes = num_nodes
         
         self.node_embs = nn.Embedding(self.num_nodes+1, self.args.hidden_size) 
+        self.norm_1 = nn.utils.weight_norm(self.node_embs)
         
-        if not self.args.load and self.args.node_embs:
+        # if not self.args.load and self.args.node_embs:
+        #     self.load_pretrained_embs()
+
+        if  self.args.node_embs:
             self.load_pretrained_embs()
 
         self.fc_1 = nn.Linear(self.args.hidden_size + NUM_LOCAL_STATS + 1, self.args.hidden_size)
@@ -86,12 +90,14 @@ class NodeEncoder(nn.Module):
         weights_dict = torch.load(self.args.node_embs)
         # Add pad embedding
         pretrained_node_embs = torch.cat((self.node_embs(torch.tensor([0])), weights_dict["node_embs"])) 
-        self.node_embs = self.node_embs.from_pretrained(pretrained_node_embs, freeze=False)
+        self.node_embs = self.node_embs.from_pretrained(pretrained_node_embs, freeze=True)
 
     def forward(self, subgraph: torch.Tensor, local_stats: torch.Tensor):
         # Get initial node embeddings
-        node_embs = self.node_embs(subgraph)
-
+        node_embs = self.norm_1(subgraph)
+        # node_embs = self.norm_1(node_embs)
+        #node_embs = (node_embs)
+        
         # Combine node embeddings with current local statistics
         node_embs = F.relu(self.fc_1(
             torch.cat((node_embs, local_stats), -1)))

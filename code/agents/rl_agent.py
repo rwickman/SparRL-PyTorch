@@ -368,9 +368,9 @@ class RLAgent(Agent):
 
         # Compute L1 loss
         td_errors = td_targets  - q_vals
-        #loss = torch.mean(td_errors.abs()  *  is_ws)
+        loss = torch.mean(td_errors.abs()  *  is_ws)
         #print("loss", loss)
-        loss = torch.mean(td_errors ** 2  *  is_ws)
+        #loss = torch.mean(td_errors ** 2  *  is_ws)
 
         self._memory.update_priorities(indices, td_errors.detach().abs(), is_experts)
         

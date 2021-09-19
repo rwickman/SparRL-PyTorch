@@ -128,7 +128,7 @@ if __name__ == "__main__":
     dqn_args = parser.add_argument_group("DQN")
     dqn_args.add_argument("--epsilon", type=float, default=0.99,
                     help="Initial epsilon used for epsilon-greedy in DQN.")
-    dqn_args.add_argument("--min_epsilon", type=float, default=0.01,
+    dqn_args.add_argument("--min_epsilon", type=float, default=0.05,
                     help="Minimum epsilon value used for epsilon-greedy in DQN.")
     dqn_args.add_argument("--epsilon_decay", type=int, default=1024,
                     help="Epsilon decay step used for decaying the epsilon value in epsilon-greedy exploration.")
@@ -140,7 +140,7 @@ if __name__ == "__main__":
                     help="Replay memory capacity.")
     dqn_args.add_argument("--expert_mem_cap", type=int, default=16384,
                     help="Number of expert experiences in replay memory.")
-    dqn_args.add_argument("--gamma", type=float, default=0.99,
+    dqn_args.add_argument("--gamma", type=float, default=0.95,
                     help="Reward discount.")
     dqn_args.add_argument("--max_grad_norm", type=float, default=2.0,
                     help="Maximum gradient norm.")
