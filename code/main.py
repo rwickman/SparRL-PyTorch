@@ -59,7 +59,7 @@ if __name__ == "__main__":
     #                 help="Number of gradient update steps after each episode.")
     parser.add_argument("--lr_warmup_steps", type=int, default=32,
                     help="Number of steps for linear LR warmup.")
-    parser.add_argument("--lr", type=float, default=1e-4,
+    parser.add_argument("--lr", type=float, default=3e-4,
                     help="Learning rate.")
     parser.add_argument("--min_lr", type=float, default=1e-6,
                     help="Minimum learning rate.")

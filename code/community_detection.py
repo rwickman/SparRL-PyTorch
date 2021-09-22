@@ -19,13 +19,13 @@ class CommunityDetection:
         min_com_val = min(self._true_communities)
         # Make it start at zero
         for i in range(len(self._true_communities)):
-            self._true_communities[i] -= min_com_val
-        
+            self._true_communities[i] = self._true_communities[i] -  min_com_val
+    
     def ARI_louvain(self):
         """Compute the Adjusted Rand Index for Louvain."""    
         partition = self._graph.louvain()
-        # print("ARI Louvain: ", adjusted_rand_score(list(partition.values()), self._true_communities))
+        # print("ARI Louvain: ", adjusted_rand_score(self._true_communities, list(partition.values())))
         # print("list(partition.values())", list(partition.values()))
         # print("self._true_communities", self._true_communities)
-        return adjusted_rand_score(list(partition.values()), self._true_communities)
+        return adjusted_rand_score(self._true_communities, list(partition.values()))
 

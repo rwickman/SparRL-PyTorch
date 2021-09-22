@@ -116,7 +116,7 @@ class Graph:
         plt.show()
 
     def louvain(self, should_plot=False):
-        partition = community_louvain.best_partition(self._G, random_state=0)
+        partition = community_louvain.best_partition(self._G, randomize=False)
         if should_plot:
             pos = nx.spring_layout(self._G)
             # color the nodes according to their partition
