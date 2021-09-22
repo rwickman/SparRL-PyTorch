@@ -107,16 +107,16 @@ class NodeEncoder(nn.Module):
         #node_embs = (node_embs)
         
         # Combine node embeddings with current local statistics
-        node_embs = F.relu(self.fc_1(
+        node_embs = F.gelu(self.fc_1(
             torch.cat((node_embs, local_stats), -1)))
         #node_embs = self.norm_1(node_embs)
-        #node_embs = F.relu(node_embs)
+        #node_embs = F.gelu(node_embs)
 
         # Create final node embeddings
-        node_embs = F.relu(self.fc_2(node_embs))
+        node_embs = F.gelu(self.fc_2(node_embs))
         # node_embs = self.norm_1(node_embs)
         #node_embs = self.dropout_1(node_embs)
-        #node_embs = F.relu(node_embs)
+        #node_embs = F.gelu(node_embs)
         
         return node_embs 
 
@@ -151,15 +151,15 @@ class EdgeEncoder(nn.Module):
         node_embs = node_embs.reshape(node_embs.shape[0], -1, self.args.hidden_size * 2)
         #print("node_embs", node_embs)
         #print("node_embs.count_nonzero()", node_embs.count_nonzero(), node_embs.shape)
-        edge_embs = F.relu(self.edge_fc_1(node_embs))
-        edge_embs = F.relu(self.edge_fc_2(edge_embs))
+        edge_embs = F.gelu(self.edge_fc_1(node_embs))
+        edge_embs = F.gelu(self.edge_fc_2(edge_embs))
 
         #print("edge_embs.count_nonzero()", edge_embs.count_nonzero())
         # edge_embs = self.norm_1(edge_embs.transpose(1,2))
         # edge_embs = self.dropout_1(edge_embs)
         
         # Create the final edge embeddings
-        edge_embs = F.relu(self.edge_fc_3(edge_embs))
+        edge_embs = F.gelu(self.edge_fc_3(edge_embs))
         # edge_embs = self.norm_1(edge_embs)
         #edge_embs = self.dropout_1(edge_embs)
         # edge_embs = self.edge_fc(edge_embs)
@@ -241,11 +241,11 @@ class SparRLNet(nn.Module):
         #     embs, state.mask) 
         
         # # # Pass the edge embeddings through FC to get Q-values
-        # v_vals = F.relu(self.v_fc_1(embs))
+        # v_vals = F.gelu(self.v_fc_1(embs))
         # v_vals = self.v_fc_2(v_vals)
         
         # # # # Pass the edge embeddings through FC to get advantage values
-        # adv_vals = F.relu(self.adv_fc_1(embs))
+        # adv_vals = F.gelu(self.adv_fc_1(embs))
         # adv_vals = self.adv_fc_2(adv_vals)
 
         # # # Derive the Q-values
@@ -255,8 +255,8 @@ class SparRLNet(nn.Module):
         # # print("share_vals", share_vals)
         # embs = (1-share_vals) * edge_embs + share_vals * embs 
 
-        q_vals = F.relu(self.q_fc_1(embs))
-        q_vals = F.relu(self.q_fc_2(q_vals))
+        q_vals = F.gelu(self.q_fc_1(embs))
+        q_vals = F.gelu(self.q_fc_2(q_vals))
 
         # print("q_vals", q_vals)
         q_vals = self.q_fc_3(q_vals)
