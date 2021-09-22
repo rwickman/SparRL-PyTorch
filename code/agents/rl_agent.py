@@ -17,6 +17,7 @@ class RewardScaler:
     def __init__(self, args):
         self.args = args
         self._reward_file = os.path.join(self.args.save_dir, "reward_stats.pt")
+        self._max_reward = torch.tensor(1, device=device)
 
         # Load saved rewards
         if self.args.load and not self.args.eval:
@@ -25,8 +26,6 @@ class RewardScaler:
         else:
             self._rewards = torch.zeros(self.args.reward_scaler_window, device=device)
             self._end = 0
-    
-        
     
     def add_reward(self, reward):
         """Add a reward to compute statistics over."""
@@ -38,21 +37,28 @@ class RewardScaler:
         """Scale a given reward."""
         if self._end >= 2: 
             reward = (reward - self._rewards[:self._end].mean()) / self._rewards[:self._end].std()
+            # reward = reward * 0.1
+            self._max_reward = max(self._max_reward, reward.abs())
+
+            #reward = torch.clip(reward, -1, 1)
+            #reward = reward / self._max_reward
         
         return reward
 
     def save(self):
         reward_dict = {
             "rewards" : self._rewards,
-            "end" : self._end
+            "end" : self._end,
+            "max_reward" : self._max_reward
         }
-
+        print("self._max_reward", self._max_reward)
         torch.save(reward_dict, self._reward_file)
 
     def load(self):
         reward_dict = torch.load(self._reward_file, map_location=device)
         self._rewards = reward_dict["rewards"]
         self._end = reward_dict["end"]
+        self._max_reward = reward_dict["max_reward"]
 
 
 class RLAgent(Agent):
@@ -164,6 +170,8 @@ class RLAgent(Agent):
         for tgt_sparrl_param, sparrl_param in zip(self._sparrl_net_tgt.parameters(), self._sparrl_net.parameters()):
             tgt_sparrl_param.data.copy_(
                 self.args.tgt_tau * sparrl_param.data + (1.0-self.args.tgt_tau) * tgt_sparrl_param.data)
+        # self._sparrl_net_tgt.load_state_dict(self._sparrl_net.state_dict())
+
 
     def _create_gamma_arr(self):
         """Create a gamma tensor for multi-step DQN."""
@@ -214,14 +222,15 @@ class RLAgent(Agent):
                     # Get the valid action for next state that maximizes the q-value
                     valid_actions = self._get_valid_edges(self._ex_buffer[i].next_state.subgraph[0])
                     q_next = self._sparrl_net(self._ex_buffer[i].next_state)
-
+                    #print("q_next", q_next)
                     next_action = self._sample_action(q_next[valid_actions], argmax=True)
                     next_action = valid_actions[next_action] 
 
                     # Compute TD target based on target function q-value for next state
                     q_next_target = self._sparrl_net_tgt(self._ex_buffer[i].next_state)[next_action]
                     td_target = self._ex_buffer[i].reward + self._ex_buffer[i].gamma *  q_next_target
-
+                    # print("q_next_target",  self._sparrl_net_tgt(self._ex_buffer[i].next_state))
+                    # print("td_target", td_target, "\n")
                 else:
                     td_target = self._ex_buffer[i].reward
 
@@ -325,6 +334,7 @@ class RLAgent(Agent):
 
             q_next_target = self._sparrl_net_tgt(
                 next_states)
+            
 
         # index used for getting the next nonempty next state
         q_next_idx = 0
@@ -356,11 +366,14 @@ class RLAgent(Agent):
 
 
                 action = self._sample_action(
-                    q_next[q_next_idx][valid_actions], True)
+                    q_next_target[q_next_idx][valid_actions], True)
                 action = int(valid_actions[action])
 
                 # Set TD Target using the q-value of the target network
                 # This is the Double-DQN target
+                # print("q_next_target[q_next_idx, action]", q_next_target[q_next_idx, action])
+                # print("gammas[i] * q_next_target[q_next_idx, action]", gammas[i] * q_next_target[q_next_idx, action])
+                # print("rewards[i] + gammas[i] * q_next_target[q_next_idx, action]", rewards[i] + gammas[i] * q_next_target[q_next_idx, action],"\n")
                 td_targets[i] = rewards[i] + gammas[i] * q_next_target[q_next_idx, action]
                 q_next_idx += 1
  
@@ -368,9 +381,9 @@ class RLAgent(Agent):
 
         # Compute L1 loss
         td_errors = td_targets  - q_vals
-        loss = torch.mean(td_errors.abs()  *  is_ws)
+        #loss = torch.mean(td_errors.abs()  *  is_ws)
         #print("loss", loss)
-        #loss = torch.mean(td_errors ** 2  *  is_ws)
+        loss = torch.mean(td_errors ** 2  *  is_ws)
 
         self._memory.update_priorities(indices, td_errors.detach().abs(), is_experts)
         
@@ -421,11 +434,15 @@ class RLAgent(Agent):
         #     float(self._sparrl_net.v_fc_2.sigma_mean_abs()))
 
         # Update the DQN target parameters
+        # if (self._train_dict["update_step"] + 1) % 16 == 0:
         self._update_target()
         
         # Print out q_values and td_targets for debugging/progress updates
-        if (self._train_dict["update_step"] + 1) % 8 == 0:
+        if (self._train_dict["update_step"] + 1) % 16 == 0:
             print("self.epsilon_threshold:", self.epsilon_threshold)
+            print("q_next", q_next)
+            print("q_next_target", q_next_target)
+
             print("loss", loss)
             print("expert_margin_loss", expert_margin_loss* self.args.expert_lam)
             print("q_values", q_vals)

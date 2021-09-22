@@ -1,7 +1,7 @@
 import json, os, random
 import numpy as np
 from multiprocessing import Lock, Value
-# from community_detection import CommunityDetection
+from community_detection import CommunityDetection
 from scipy import stats
 
 class RewardManager:
@@ -82,33 +82,15 @@ class RewardManager:
 
     def _compute_spearman_reward(self):
         cur_spearmanr = self.compute_sparmanr()
-        reward = -(self._prev_spearmanr - cur_spearmanr)
+        reward = cur_spearmanr - self._prev_spearmanr
         self._prev_spearmanr = cur_spearmanr
         return reward#stats.spearmanr(self._org_pr, cur_pr).correlation #* self.args.reward_factor
 
-    def standardize_reward(self, mse):
-        with self._reward_lock:
-            # Only update statistics if training
-            if self.args.episodes > 0:
-                # Compute online statistics
-                self.args.n.value += 1
-
-                # Clip by max n value
-                self.args.n.value = min(self.args.n.value, self.args.max_n)
- 
-                if self.args.n.value == 1:
-                    self.args.mean_mse.value = mse
-                else:    
-                    delta = mse - self.args.mean_mse.value
-                    self.args.mean_mse.value += delta / self.args.n.value
-                    self.args.m2.value += delta * (mse - self.args.mean_mse.value)
-                    self.args.var_mse.value = self.args.m2.value / (self.args.n.value - 1)
-
-            if self.args.n.value <= 1 or self.args.var_mse.value ** 0.5 == 0.0:
-                return mse
-            else:
-                return (mse - self.args.mean_mse.value) / self.args.var_mse.value ** 0.5
-
+    def _compute_com_reward(self):
+        cur_ari = self._com_detect.ARI_louvain()
+        reward = cur_ari - self._prev_ari
+        self._prev_ari = cur_ari
+        return reward
     
     def _setup_spsp(self, part=None):
         self._org_edges = set(self._graph._G.nodes())
@@ -154,15 +136,13 @@ class RewardManager:
 
     def _setup_com(self):
         self._org_ari = self._com_detect.ARI_louvain()
+        self._prev_ari = self._org_ari 
     
     def _setup_spearman(self):
         self._org_pr = list(self._graph.get_page_ranks().values())
         self._prev_spearmanr = 1.0
 
-    def _compute_com_reward(self):
-        cur_ari = self._com_detect.ARI_louvain()
-        #print((cur_ari - self._org_ari) ** 2)
-        return cur_ari - self._org_ari
+
         
     def spsp_diff(self, sub_one=False):
         cur_edges = set(self._graph._G.nodes())

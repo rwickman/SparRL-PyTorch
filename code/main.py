@@ -3,7 +3,7 @@ import argparse, os
 from environment import Environment
 from agents.rl_agent import RLAgent
 from agents.expert_agent import ExpertAgent
-from replay_memory import PrioritizedExReplay
+from replay_memory import PrioritizedExReplay, ReplayMemory
 from results_manager import ResultsManager
 from graph import Graph
 from agent_manager import AgentManager
@@ -53,13 +53,13 @@ if __name__ == "__main__":
             help="Number of episodes to train on.")
     parser.add_argument("--batch_size", type=int, default=32,
             help="Number of episodes to train on.")
-    parser.add_argument("--save_iter", type=int, default=8,
+    parser.add_argument("--save_iter", type=int, default=32,
             help="Number of episodes to wait till saving the model.")
     # parser.add_argument("--train_iter", type=int, default=3,
     #                 help="Number of gradient update steps after each episode.")
     parser.add_argument("--lr_warmup_steps", type=int, default=32,
                     help="Number of steps for linear LR warmup.")
-    parser.add_argument("--lr", type=float, default=3e-4,
+    parser.add_argument("--lr", type=float, default=1e-4,
                     help="Learning rate.")
     parser.add_argument("--min_lr", type=float, default=1e-6,
                     help="Minimum learning rate.")
@@ -79,9 +79,10 @@ if __name__ == "__main__":
             help="Minimum number of episodes that have to be elapsed before training.")
     parser.add_argument("--decay_episodes", type=int, default=2048,
             help="Number of episdoes elapsed before epsilon decays to minimum.")
-    parser.add_argument("--reward_scaler_window", type=int, default=4096,
+    parser.add_argument("--reward_scaler_window", type=int, default=8192,
             help="Number of rewards save to compute statistics over rewards to standardize.")
-
+    parser.add_argument("--com_labels", default="",
+            help="True community labels.")
 
 
     graph_args = parser.add_argument_group("Graph")
@@ -134,7 +135,7 @@ if __name__ == "__main__":
                     help="Epsilon decay step used for decaying the epsilon value in epsilon-greedy exploration.")
     dqn_args.add_argument("--dqn_steps", type=int, default=1,
                     help="Number of steps to use for multistep DQN.")
-    dqn_args.add_argument("--tgt_tau", type=float, default=0.001,
+    dqn_args.add_argument("--tgt_tau", type=float, default=0.01,
                     help="The tau value to control the update rate of the target DQN parameters.")
     dqn_args.add_argument("--mem_cap", type=int, default=32768,
                     help="Replay memory capacity.")

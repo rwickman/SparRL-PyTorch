@@ -31,12 +31,9 @@ class ResultsManager:
         # self.env.preprune(self.args.T_max)
         for i in range(self.args.episodes):
             if isinstance(agent, RLAgent):
-                if self.args.eval_batch_size > 1:
-                    final_rewards.append(self.run_rl_eval(agent, self.args.T_max))
-                else:
-                    final_rewards.append(self.run_episode(agent))
+                final_rewards.append(self.run_rl_eval(agent, self.args.T_max))
             else:
-                final_rewards.append(self.run_episode(agent))
+                final_rewards.append(self.run_episode(agent, self.args.T_max))
 
             self.env.reset()
 
@@ -55,6 +52,8 @@ class ResultsManager:
     #     return self.env.reward_man.compute_sparmanr()
 
     def run_rl_eval(self, agent, T: int,):
+        if self.args.eval_batch_size == 1:
+            return self.run_episode(agent, T)
         org_subgraph_len = self.args.subgraph_len 
         self.args.subgraph_len = self.args.eval_batch_size * self.args.subgraph_len
         num_left = T % self.args.eval_batch_size
@@ -101,13 +100,15 @@ class ResultsManager:
 
         self.args.subgraph_len = org_subgraph_len
         print("E:", self.env._graph.get_num_edges())
-        return self.env.reward_man.compute_sparmanr()
+        return self.get_final_reward()
 
 
-    def run_episode(self, agent):
+
+
+    def run_episode(self, agent, T: int):
         #self.env.preprune(self.args.T_eval)
-        for t in range(self.args.T_max):
-            state = self.env.create_state(self.args.subgraph_len, self.args.T_max, t)
+        for t in range(T):
+            state = self.env.create_state(self.args.subgraph_len, T, t)
             
             if isinstance(agent, RLAgent):
                 edge_idx = agent(state, argmax=True)
@@ -116,8 +117,14 @@ class ResultsManager:
 
             self.env.prune_edge(edge_idx, state.subgraph)
         
-        return self.env.reward_man.compute_sparmanr()
+        return self.get_final_reward()
 
+
+    def get_final_reward(self):
+        if self.args.obj == "spearman":
+            return self.env.reward_man.compute_sparmanr()
+        else:
+            return self.env.reward_man._com_detect.ARI_louvain()
 
     def plot_results(self, rewards):
         # def moving_average(x):

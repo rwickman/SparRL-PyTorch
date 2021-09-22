@@ -70,20 +70,22 @@ class NodeEncoder(nn.Module):
         self.num_nodes = num_nodes
         
         self.node_embs = nn.Embedding(self.num_nodes+1, self.args.hidden_size) 
-        self.norm_1 = nn.utils.weight_norm(self.node_embs)
-        
+        #self.norm_1 = nn.utils.weight_norm(self.node_embs)
+        self.norm_1 = nn.BatchNorm1d(self.args.hidden_size)
         # if not self.args.load and self.args.node_embs:
         #     self.load_pretrained_embs()
 
-        if  self.args.node_embs:
+        if self.args.node_embs:
             self.load_pretrained_embs()
-
+        
+        #self.node_fc = nn.Linear(self.args.hidden_size, self.args.hidden_size)
+        # self.node_fc = nn.BatchNorm1d(self.args.hidden_size)
         self.fc_1 = nn.Linear(self.args.hidden_size + NUM_LOCAL_STATS + 1, self.args.hidden_size)
         self.fc_2 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
 
         #self.norm_1 = nn.LayerNorm(self.args.hidden_size, eps=1e-6)
         # self.norm_2 = nn.LayerNorm(self.args.hidden_size, eps=1e-10)
-        #self.dropout_1 = nn.Dropout(self.args.drop_rate)
+        self.dropout_1 = nn.Dropout(self.args.drop_rate)
         # self.dropout_2 = nn.Dropout(self.args.drop_rate)
         
     def load_pretrained_embs(self):
@@ -94,7 +96,13 @@ class NodeEncoder(nn.Module):
 
     def forward(self, subgraph: torch.Tensor, local_stats: torch.Tensor):
         # Get initial node embeddings
-        node_embs = self.norm_1(subgraph)
+        batch_size = subgraph.shape[0]
+        node_embs = self.node_embs(subgraph)
+        
+        node_embs = self.norm_1(node_embs.reshape(-1, self.args.hidden_size))
+        node_embs = node_embs.reshape(batch_size, -1, self.args.hidden_size)
+        #node_embs = self.norm_1(node_embs)
+        #node_embs = self.dropout_1(node_embs)
         # node_embs = self.norm_1(node_embs)
         #node_embs = (node_embs)
         
