@@ -58,22 +58,21 @@ class ResultsManager:
         self.args.subgraph_len = self.args.eval_batch_size * self.args.subgraph_len
         num_left = T % self.args.eval_batch_size
         num_batches = T//self.args.eval_batch_size
-        
+        org_num_edges = self.env._graph.get_num_edges()
+
         if num_left >= 1:
             num_batches += 1
         for t in tqdm(range(num_batches)):
             state = self.env.create_state(self.args.subgraph_len, T, t*self.args.eval_batch_size)
             state.subgraph = state.subgraph.reshape(-1, org_subgraph_len*2)
-            # TODO: Have max_T and t be descending
-            #state.global_stats = state.global_stats.repeat(self.args.eval_batch_size, 1, 1)
             
             # Create new global_stats
             t_arr = torch.arange(t*self.args.eval_batch_size, (t+1)*self.args.eval_batch_size, device=device)
             T_arr = torch.tensor(T, device=device).repeat(self.args.eval_batch_size)
-            prune_left = torch.log(T_arr - t_arr).unsqueeze(1)
             num_edges_left = torch.tensor(self.env._graph.get_num_edges(), device=device).repeat(self.args.eval_batch_size)
-            num_edges_left = torch.log(num_edges_left - torch.arange(0, self.args.eval_batch_size, device=device)).unsqueeze(1)
             
+            num_edges_left = num_edges_left - torch.arange(0, self.args.eval_batch_size, device=device).unsqueeze(1)
+            num_edges_left = num_edges_left / org_num_edges
             #print("num_edges_left - torch.arange(0, self.args.eval_batch_size)", num_edges_left - torch.arange(0, self.args.eval_batch_size))
             
             #state.global_stats = torch.cat((num_edges_left, torch.zeros(self.args.eval_batch_size, 1)), -1).unsqueeze(1)
