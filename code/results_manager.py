@@ -122,8 +122,11 @@ class ResultsManager:
     def get_final_reward(self):
         if self.args.obj == "spearman":
             return self.env.reward_man.compute_sparmanr()
-        else:
+        elif self.args.obj == "com":
             return self.env.reward_man._com_detect.ARI_louvain()
+        elif self.args.obj == "spsp":
+            return self.env.reward_man._compute_spsp_reward()
+            
 
     def plot_results(self, rewards):
         # def moving_average(x):

@@ -37,10 +37,10 @@ class RewardScaler:
         """Scale a given reward."""
         if self._end >= 2: 
             reward = (reward - self._rewards[:self._end].mean()) / self._rewards[:self._end].std()
-            # reward = reward * 0.1
+            reward = reward * 0.1
             self._max_reward = max(self._max_reward, reward.abs())
 
-            #reward = torch.clip(reward, -1, 1)
+            reward = torch.clip(reward, -1, 1)
             #reward = reward / self._max_reward
         
         return reward
@@ -105,7 +105,7 @@ class RLAgent(Agent):
         """Return the current epsilon value used for epsilon-greedy exploration."""
         # Adjust for number of expert episodes that have elapsed
         #return self.args.min_epsilon#self.args.epsilon
-        eps = min(((self.args.decay_episodes - self._train_dict["episodes"]) / (self.args.decay_episodes)) * self.args.epsilon, self.args.epsilon) 
+        eps = min(((self.args.decay_episodes - self._train_dict["update_step"]) / (self.args.decay_episodes)) * self.args.epsilon, self.args.epsilon) 
         return max(eps, self.args.min_epsilon)
 
         # eps = min(((self.args.episodes - self._train_dict["episodes"]) / (self.args.episodes)) * self.args.epsilon, self.args.epsilon) 
@@ -381,7 +381,7 @@ class RLAgent(Agent):
 
         # Compute L1 loss
         td_errors = td_targets  - q_vals
-        #loss = torch.mean(td_errors.abs()  *  is_ws)
+        #loss = torch.mean(td_errors.abs() * is_ws)
         #print("loss", loss)
         loss = torch.mean(td_errors ** 2  *  is_ws)
 
@@ -398,50 +398,25 @@ class RLAgent(Agent):
             self._sparrl_net.parameters(),
             self.args.max_grad_norm)
 
-        #print("node_enc.node_embs.weight.grad", self._sparrl_net.node_enc.node_embs.weight.grad)
-        # print("node_enc.node_embs.weight.grad", self._sparrl_net.node_enc.node_embs.weight.grad)
-        # print("self._sparrl_net.q_fc_1.weight_mu.grad", self._sparrl_net.q_fc_1.weight.grad)
-        # print("self._sparrl_net.q_fc_2.weight_mu.grad", self._sparrl_net.q_fc_2.weight.grad)
-
-        # print("self._sparrl_net.q_fc_1.weight_sigma.grad", self._sparrl_net.q_fc_1.weight_sigma.grad, self._sparrl_net.q_fc_1.weight_mu.is_leaf)
-        # print("self._sparrl_net.q_fc_2.weight_mu.grad", self._sparrl_net.q_fc_2.weight_mu.grad)
-        # print("self._sparrl_net.q_fc_2.weight_sigma.grad", self._sparrl_net.q_fc_2.weight_sigma.grad)
-
-        #print("self._sparrl_net.q_fc_2.bias_mu.grad", self._sparrl_net.q_fc_2.bias_mu.grad, self._sparrl_net.q_fc_2.bias_mu.is_leaf)
-        # print("self._sparrl_net.q_fc_2.bias_sigma.grad", self._sparrl_net.q_fc_2.bias_sigma.grad, self._sparrl_net.q_fc_2.bias_sigma.is_leaf)
-        # print("self._sparrl_net.q_fc_2.weight_epsilon.grad", self._sparrl_net.q_fc_2.weight_epsilon.grad, self._sparrl_net.q_fc_2.weight_epsilon.is_leaf)
-
-        # print("self._sparrl_net.training", self._sparrl_net.training)
         # Train model
         self._optim.step()
-
-        # Check if using decay and min lr not reached        
-        # if self._train_dict["update_step"] < self.args.lr_warmup_steps:
-        #     self._optim.param_groups[0]["lr"] = self.args.lr * (self._train_dict["update_step"] + 1) / self.args.lr_warmup_steps 
-        # elif not self.args.no_lr_decay and self._optim.param_groups[0]["lr"] > self.args.min_lr:
-        #     # If so, decay learning rate
-        #     self._lr_scheduler.step()
-        # else:
-        #     self._optim.param_groups[0]["lr"] = self.args.min_lr
-        #print("LR", self._optim.param_groups[0]["lr"])
         
         # Update train info
         self._train_dict["update_step"] += 1
         self._train_dict["mse_losses"].append(float(loss.detach()))
-        # self._train_dict["sigma_mean_abs_1"].append(
-        #     float(self._sparrl_net.v_fc_1.sigma_mean_abs()))
-        # self._train_dict["sigma_mean_abs_2"].append(
-        #     float(self._sparrl_net.v_fc_2.sigma_mean_abs()))
 
         # Update the DQN target parameters
-        # if (self._train_dict["update_step"] + 1) % 16 == 0:
+        # if (self._train_dict["update_step"] + 1) % 32 == 0:
         self._update_target()
         
         # Print out q_values and td_targets for debugging/progress updates
-        if (self._train_dict["update_step"] + 1) % 16 == 0:
+        if (self._train_dict["update_step"] + 1) % 64 == 0:
+            # print("self._sparrl_net.q_fc_1.weight_mu.grad", self._sparrl_net.q_fc_1.weight.grad)
+            # print("self._sparrl_net.q_fc_2.weight_mu.grad", self._sparrl_net.q_fc_2.weight.grad)
+            # print("self._sparrl_net.q_fc_3.weight_mu.grad", self._sparrl_net.q_fc_3.weight.grad)
             print("self.epsilon_threshold:", self.epsilon_threshold)
-            print("q_next", q_next)
-            print("q_next_target", q_next_target)
+            print("q_next", q_next[0:2])
+            print("q_next_target", q_next_target[0:2])
 
             print("loss", loss)
             print("expert_margin_loss", expert_margin_loss* self.args.expert_lam)
@@ -470,7 +445,7 @@ class RLAgent(Agent):
         # Set for when experience is added
         self._should_add_expert_ex = self._train_dict["episodes"] < self.args.expert_episodes
 
-        if self._should_add_expert_ex and not self.args.eval:
+        if self._should_add_expert_ex and not self.args.eval and not argmax:
             # Run through expert policy
             action = self._expert_agent(state)
         else:
@@ -487,6 +462,7 @@ class RLAgent(Agent):
                 valid_actions = self._get_valid_edges(state.subgraph[0])
                 action = self._sample_action(q_vals[valid_actions], argmax)
                 action = int(valid_actions[action])
+                
 
         return action
         

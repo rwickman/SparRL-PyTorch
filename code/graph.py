@@ -21,10 +21,15 @@ class Graph:
                 print("Making undirected.")
                 self._G = nx.read_edgelist(self.args.edge_list, nodetype=int)
         
-        # Relabel nodes to [1, |V|]
+        self._relabel_nodes()
+        print("self.get_num_edges()", self.get_num_edges())
+
+    def _relabel_nodes(self):
+        """Relabel nodes to [1, |V|]."""
         mapping = dict(zip(self._G.nodes, range(1,self.num_nodes+1)))
         self._G = nx.relabel_nodes(self._G, mapping)
-        print("self.get_num_edges()", self.get_num_edges())
+        
+
 
     def add_edge(self, src_id, dst_id):
         if not isinstance(src_id, int):
@@ -140,3 +145,8 @@ class Graph:
     def get_G(self):
         """Get the underlying networkx graph."""
         return self._G
+    
+    def replace_G(self, G):
+        """Replace underlying graph with a new graph."""
+        self._G = G
+        self._relabel_nodes()

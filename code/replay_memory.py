@@ -48,7 +48,7 @@ class ReplayMemory:
             "memory" : self._memory,
             "pos": self._cur_pos
         }
-        print("model_dict", model_dict)
+
         torch.save(model_dict, self._memory_file)
         
     def load(self):

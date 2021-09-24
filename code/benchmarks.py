@@ -10,6 +10,7 @@ from typing import Dict
 
 from graph import Graph
 from reward_manager import RewardManager
+from community_detection import CommunityDetection
 
 @dataclass
 class Metrics:
@@ -25,8 +26,8 @@ class Benchmarks:
     def __init__(self, args):
         self._args = args
         self._graph = Graph(self._args)
-        # if self._args.com_labels:
-        #     self._com_detect = CommunityDetection(self._args, self._graph)
+        if self._args.com_labels:
+            self._com_detect = CommunityDetection(self._args, self._graph)
         self._org_pr = list(self._graph.get_page_ranks().values())
         self._reward_manager = RewardManager(self._args, self._graph)
         self._reward_manager.setup()
@@ -166,45 +167,58 @@ class Benchmarks:
         ari_arr = np.zeros(self._args.predict_runs)
         spearman_arr = np.zeros(self._args.predict_runs)
         edge_arr = np.zeros(self._args.predict_runs, dtype=np.int32)
+        spsp_arr = np.zeros(self._args.predict_runs)
         spsp_freq = {}
+
+
         for i in range(self._args.predict_runs):
+            # Reset the graph
+            if i > 0:
+                self._graph.replace_G(nk.nxadapter.nk2nx(G))
+            
+            self._reward_manager.setup()
             # Get Sparsified graph
             G_spar = sparsifier.getSparsifiedGraphOfSize(G, ratio)
             
-            self._graph._G = nk.nxadapter.nk2nx(G_spar)
+            # Replace underlying graph
+            self._graph.replace_G(nk.nxadapter.nk2nx(G_spar))
+            
             # Compute Louvain ARI score
-            # if self._args.com_labels:
-            #     self._com_detect._graph = self._graph
-            #     ari_arr[i] = self._com_detect.ARI_louvain()
-            # else:
-            #     ari_arr[i] = -1
-            # #print(self._reward_manager.compute_reward())
-            # if self._args.obj == "spsp":
-            #     spsp_diff = abs(self._reward_manager.spsp_diff(sub_one=False))
-            #     #print(spsp_diff)
-            #     spsp_counter = Counter(spsp_diff)
-            #     #print(spsp_counter)
-            #     spsp_freq = {} 
-            #     for k in spsp_counter:
-            #         if k not in spsp_freq:
-            #             spsp_freq[k] = 0
-            #         spsp_freq[k] = spsp_counter[k]
-            #     #spsp_reward = self._reward_manager.compute_reward()
+            if self._args.com_labels:
+                self._com_detect._graph = self._graph
+                ari_arr[i] = self._com_detect.ARI_louvain()
+            else:
+                ari_arr[i] = -1
+            #print(self._reward_manager.compute_reward())
+            if self._args.obj == "spsp":
+                # spsp_diff = self._reward_manager.spsp_diff()
+                # #print(spsp_diff)
+                # spsp_counter = Counter(spsp_diff)
+                # #print(spsp_counter)
+                # spsp_freq = {} 
+                # for k in spsp_counter:
+                #     if k not in spsp_freq:
+                #         spsp_freq[k] = 0
+                #     spsp_freq[k] = spsp_counter[k]
+                spsp_arr[i] = self._reward_manager.compute_reward()
             
             # Compute Spearman's cor coef for PageRank
-            updated_pr = list(self._graph.get_page_ranks().values())
-            spearmanr = stats.spearmanr(self._org_pr, updated_pr)
-            spearman_arr[i] = spearmanr.correlation
+            if self._args.obj == "spearman":
+                updated_pr = list(self._graph.get_page_ranks().values())
+                spearmanr = stats.spearmanr(self._org_pr, updated_pr)
+                spearman_arr[i] = spearmanr.correlation
+            
             edge_arr[i] = self._graph.get_num_edges()
-            spsp_str = "\n"
-            if self._args.obj == "spsp":
-                
-                for k in spsp_freq:
-                    spsp_freq[k] /= len(spsp_diff)
-                total_prob = 0
-                for dist, prob in sorted(spsp_freq.items()):
-                    spsp_str += "\t  {}: {}\n".format(dist, prob)
-                    total_prob += prob
+            # spsp_str = "\n"
+            # if self._args.obj == "spsp": 
+            #     for k in spsp_freq:
+            #         spsp_freq[k] /= len(spsp_diff)
+            #     total_prob = 0
+            #     for dist, prob in sorted(spsp_freq.items()):
+            #         spsp_str += "\t  {}: {}\n".format(dist, prob)
+            #         total_prob += prob
+        spsp_str = "\n\tSPSP REWARD: " + str(spsp_arr.mean())
+        # print("spsp_arr", spsp_arr)
         return Metrics(ari_arr.mean(), spearman_arr.mean(), edge_arr.mean(), spsp_str, spsp_freq)
 
 def main(args):

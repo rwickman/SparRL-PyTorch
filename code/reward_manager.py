@@ -28,6 +28,7 @@ class RewardManager:
         elif self.args.obj == "spearman":
             self._setup_spearman()
         else:
+            raise Exception("Invalid Objective.")
             # By default use page rank
             # Get the prior page rank scores before training
             self._prior_pr = self._graph.get_page_ranks()
@@ -46,7 +47,7 @@ class RewardManager:
             cur_reward =self._compute_page_rank_reward()
         
         # Multiple by scale factor
-        cur_reward = cur_reward * self.args.reward_factor
+        cur_reward = cur_reward
 
         return cur_reward
 
@@ -72,8 +73,9 @@ class RewardManager:
 
     def _compute_spsp_reward(self):
         cur_spsp_dists = self._compute_spsp_dists()
-        mse = np.mean((self._spsp_dists - cur_spsp_dists) ** 2)
-        return -mse
+        mse = np.mean(self._spsp_dists - cur_spsp_dists)
+        self._spsp_dists = cur_spsp_dists
+        return mse
 
     def compute_sparmanr(self):
         cur_pr = list(self._graph.get_page_ranks().values()) 
@@ -103,20 +105,21 @@ class RewardManager:
         self._spsp_pairs = []
         self._spsp_dists = []
         random.shuffle(node_ids)
-        for src_id in node_ids:
-            for dst_id in node_ids:
-                if src_id != dst_id:
-                    path_len = len(self._graph.get_shortest_path(src_id, dst_id)) - 1
-                    # Check if path exists
-                    if path_len > 0:
-                        self._spsp_dists.append(path_len)
-                        self._spsp_pairs.append((src_id, dst_id))
+        
+        src_nodes = random.choices(node_ids, k=self.args.num_spsp_pairs*2)
+        dst_nodes = random.choices(node_ids, k=self.args.num_spsp_pairs*2)
+        pairs = zip(src_nodes, dst_nodes)
+        for src_id, dst_id in pairs:
+            if src_id != dst_id:
+                path_len = len(self._graph.get_shortest_path(src_id, dst_id)) - 1
+                # Check if path exists
+                if path_len > 0:
+                    self._spsp_dists.append(path_len)
+                    self._spsp_pairs.append((src_id, dst_id))
                 
-                
-                if len(self._spsp_pairs) >= self.args.num_spsp_pairs:    
-                    break
+            
             if len(self._spsp_pairs) >= self.args.num_spsp_pairs:    
-                    break
+                break
 
         self._spsp_dists = np.array(self._spsp_dists)
         
@@ -129,8 +132,10 @@ class RewardManager:
             else:
                 dist = len(self._graph.get_shortest_path(src_id - 1, dst_id - 1)) - 1
             # Check if path exists
-            if (dist == 0):
-                dist = self._graph.get_num_nodes()
+            assert dist != 0
+            if dist == -1:
+                dist = self._graph.num_nodes
+
             spsp_dists.append(dist)
         return np.array(spsp_dists)
 
@@ -145,14 +150,7 @@ class RewardManager:
 
         
     def spsp_diff(self, sub_one=False):
-        cur_edges = set(self._graph._G.nodes())
-        # print(cur_edges)
-        # print(self._org_edges)
-        
-        if cur_edges.difference(self._org_edges):
-            cur_spsp_dists = self._compute_spsp_dists(sub_one=True)
-        else:
-            cur_spsp_dists = self._compute_spsp_dists(sub_one=False)
+        cur_spsp_dists = self._compute_spsp_dists()
         return self._spsp_dists - cur_spsp_dists
 
     def reset(self, part=None):

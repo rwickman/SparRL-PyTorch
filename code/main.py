@@ -51,7 +51,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--episodes", type=int, default=2048,
             help="Number of episodes to train on.")
-    parser.add_argument("--batch_size", type=int, default=32,
+    parser.add_argument("--batch_size", type=int, default=64,
             help="Number of episodes to train on.")
     parser.add_argument("--save_iter", type=int, default=32,
             help="Number of episodes to wait till saving the model.")
@@ -59,7 +59,7 @@ if __name__ == "__main__":
     #                 help="Number of gradient update steps after each episode.")
     parser.add_argument("--lr_warmup_steps", type=int, default=32,
                     help="Number of steps for linear LR warmup.")
-    parser.add_argument("--lr", type=float, default=3e-4,
+    parser.add_argument("--lr", type=float, default=2e-4,
                     help="Learning rate.")
     parser.add_argument("--min_lr", type=float, default=1e-6,
                     help="Minimum learning rate.")
@@ -77,13 +77,14 @@ if __name__ == "__main__":
             help="Minimum number of episodes that have to be elapsed before training.")
     parser.add_argument("--warmup_eps", type=int, default=1,
             help="Minimum number of episodes that have to be elapsed before training.")
-    parser.add_argument("--decay_episodes", type=int, default=2048,
+    parser.add_argument("--decay_episodes", type=int, default=10000,
             help="Number of episdoes elapsed before epsilon decays to minimum.")
     parser.add_argument("--reward_scaler_window", type=int, default=8192,
             help="Number of rewards save to compute statistics over rewards to standardize.")
     parser.add_argument("--com_labels", default="",
             help="True community labels.")
-
+    parser.add_argument("--num_spsp_pairs", type=int, default=8192,
+            help="Number of shortest path pairs.")
 
     graph_args = parser.add_argument_group("Graph")
     graph_args.add_argument("--edge_list", required=True,
@@ -129,13 +130,13 @@ if __name__ == "__main__":
     dqn_args = parser.add_argument_group("DQN")
     dqn_args.add_argument("--epsilon", type=float, default=0.99,
                     help="Initial epsilon used for epsilon-greedy in DQN.")
-    dqn_args.add_argument("--min_epsilon", type=float, default=0.05,
+    dqn_args.add_argument("--min_epsilon", type=float, default=0.1,
                     help="Minimum epsilon value used for epsilon-greedy in DQN.")
     dqn_args.add_argument("--epsilon_decay", type=int, default=1024,
                     help="Epsilon decay step used for decaying the epsilon value in epsilon-greedy exploration.")
     dqn_args.add_argument("--dqn_steps", type=int, default=1,
                     help="Number of steps to use for multistep DQN.")
-    dqn_args.add_argument("--tgt_tau", type=float, default=0.01,
+    dqn_args.add_argument("--tgt_tau", type=float, default=0.005,
                     help="The tau value to control the update rate of the target DQN parameters.")
     dqn_args.add_argument("--mem_cap", type=int, default=32768,
                     help="Replay memory capacity.")

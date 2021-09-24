@@ -53,7 +53,7 @@ class Environment:
 
         # Clip between valid bounds
         #return int(np.clip(T, 1, self.args.T_max))
-        T = self.args.T_max.value#random.randint(2, self.args.T_max.value)
+        T = random.randint(1, self.args.T_max.value)
         # T = 1
         return T
 
