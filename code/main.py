@@ -73,7 +73,7 @@ if __name__ == "__main__":
             help="Load saved models.")
     parser.add_argument("--node_embs", default="",
             help="Pretrained node embeddings to load into the network.")
-    parser.add_argument("--min_ep", type=int, default=16,
+    parser.add_argument("--min_ep", type=int, default=256,
             help="Minimum number of episodes that have to be elapsed before training.")
     parser.add_argument("--warmup_eps", type=int, default=1,
             help="Minimum number of episodes that have to be elapsed before training.")
