@@ -1,5 +1,4 @@
 import networkx as nx
-import nxmetis
 import community as community_louvain
 from networkx.algorithms.community import greedy_modularity_communities
 import matplotlib.cm as cm
