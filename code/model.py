@@ -99,8 +99,8 @@ class NodeEncoder(nn.Module):
         batch_size = subgraph.shape[0]
         node_embs = self.node_embs(subgraph)
         
-        node_embs = self.norm_1(node_embs.reshape(-1, self.args.hidden_size))
-        node_embs = node_embs.reshape(batch_size, -1, self.args.hidden_size)
+        #node_embs = self.norm_1(node_embs.reshape(-1, self.args.hidden_size))
+        #node_embs = node_embs.reshape(batch_size, -1, self.args.hidden_size)
         #node_embs = self.norm_1(node_embs)
         #node_embs = self.dropout_1(node_embs)
         # node_embs = self.norm_1(node_embs)
@@ -132,8 +132,8 @@ class EdgeEncoder(nn.Module):
         #     self.args.hidden_size,
         #     kernel_size=2,
         #     stride=2)
-        self.edge_fc_1 = nn.Linear(self.args.hidden_size * 2, self.args.hidden_size * 2)
-        self.edge_fc_2 = nn.Linear(self.args.hidden_size * 2, self.args.hidden_size)
+        self.edge_fc_1 = nn.Linear(self.args.hidden_size * 2, self.args.hidden_size)
+        self.edge_fc_2 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
         #self.norm_1 = nn.LayerNorm(self.args.hidden_size, eps=1e-10)
         #self.dropout_1 = nn.Dropout(self.args.drop_rate)
 
@@ -143,7 +143,7 @@ class EdgeEncoder(nn.Module):
         # self.dropout_2 = nn.Dropout(self.args.drop_rate)
 
         # Used produce to produce the final edge embedding
-        self.edge_fc_3 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
+        #self.edge_fc_3 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
 
     def forward(self, node_embs: torch.Tensor):
         # Combine the node embeddings to create edge embeddings
@@ -159,7 +159,7 @@ class EdgeEncoder(nn.Module):
         # edge_embs = self.dropout_1(edge_embs)
         
         # Create the final edge embeddings
-        edge_embs = F.relu(self.edge_fc_3(edge_embs))
+        #edge_embs = F.relu(self.edge_fc_3(edge_embs))
         # edge_embs = self.norm_1(edge_embs)
         #edge_embs = self.dropout_1(edge_embs)
         # edge_embs = self.edge_fc(edge_embs)
@@ -205,8 +205,8 @@ class SparRLNet(nn.Module):
         # self.adv_fc_2 = nn.Linear(self.args.hidden_size, 1)
 
 
-        self.q_fc_1 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
-        self.q_fc_2 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
+        # self.q_fc_1 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
+        # self.q_fc_2 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
         self.q_fc_3 = nn.Linear(self.args.hidden_size, 1)
         # self.q_fc_3 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
         # self.q_fc_4 = nn.Linear(self.args.hidden_size, 1)
@@ -255,11 +255,11 @@ class SparRLNet(nn.Module):
         # # print("share_vals", share_vals)
         # embs = (1-share_vals) * edge_embs + share_vals * embs 
 
-        q_vals = F.relu(self.q_fc_1(embs))
-        q_vals = F.relu(self.q_fc_2(q_vals))
+        # q_vals = F.relu(self.q_fc_1(embs))
+        # q_vals = F.relu(self.q_fc_2(q_vals))
 
         # print("q_vals", q_vals)
-        q_vals = self.q_fc_3(q_vals)
+        q_vals = self.q_fc_3(embs)
         #print("q_vals", q_vals)
         if batch_size == 1:
             return q_vals.view(-1)

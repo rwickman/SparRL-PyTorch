@@ -116,7 +116,7 @@ if __name__ == "__main__":
     net_args = parser.add_argument_group("SparRL Network")
     net_args.add_argument("--emb_size", type=int, default=128,
         help="Size of node and edge embeddings.")
-    net_args.add_argument("--hidden_size", type=int, default=256,
+    net_args.add_argument("--hidden_size", type=int, default=128,
         help="Number of hidden units in each FC layer for the SparRL network.")
     net_args.add_argument("--drop_rate", type=float, default=0.1,
         help="Dropout rate.")
