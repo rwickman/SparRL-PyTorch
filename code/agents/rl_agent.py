@@ -271,10 +271,9 @@ class RLAgent(Agent):
             # Create subgraph mask if edges less than subgraph length
             #if ex.state.subgraph.shape[1]//2 < self.args.subgraph_len:
                 # Set edges that are null to 1 to mask out
+            #print("ex.state.mask", ex.state.mask)
             masks[i] = ex.state.mask
-            # print("masks[i]", masks[i])
-            # print("ex.state.mask", ex.state.mask)
-
+            
             local_stats[i, :ex.state.local_stats.shape[1]] = ex.state.local_stats
             subgraphs[i, :ex.state.subgraph.shape[1]], global_stats[i], local_stats[i, :ex.state.local_stats.shape[1]] = ex.state.subgraph, ex.state.global_stats, ex.state.local_stats
             neighs[i] = ex.state.neighs
@@ -419,6 +418,16 @@ class RLAgent(Agent):
             # print("self._sparrl_net.q_fc_1.weight_mu.grad", self._sparrl_net.q_fc_1.weight.grad)
             # print("self._sparrl_net.q_fc_2.weight_mu.grad", self._sparrl_net.q_fc_2.weight.grad)
             # print("self._sparrl_net.q_fc_3.weight_mu.grad", self._sparrl_net.q_fc_3.weight.grad)
+            # print("self._sparrl_net.q_fc_3.weight_mu.grad", self._sparrl_net.q_fc_3.weight.grad.max())
+            # print("self._sparrl_net.q_fc_3.weight_mu.grad", self._sparrl_net.q_fc_3.weight.grad.min())
+            # print("self._sparrl_net.q_fc_3.weight_mu.grad", self._sparrl_net.q_fc_3.weight.grad.norm())
+
+
+            print("self._sparrl_net.node_enc.gat.node_embs.weight.grad", self._sparrl_net.node_enc.gat.node_embs.weight.grad)
+            print("self._sparrl_net.node_enc.gat.node_embs.weight.grad", self._sparrl_net.node_enc.gat.node_embs.weight.grad.max())
+            print("self._sparrl_net.node_enc.gat.node_embs.weight.grad", self._sparrl_net.node_enc.gat.node_embs.weight.grad.min())
+            print("self._sparrl_net.node_enc.gat.node_embs.weight.grad", self._sparrl_net.node_enc.gat.node_embs.weight.grad.norm())
+
             print("self.epsilon_threshold:", self.epsilon_threshold)
             print("q_next", q_next[0:2])
             print("q_next_target", q_next_target[0:2])

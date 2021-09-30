@@ -62,7 +62,6 @@ class NoisyLinear(nn.Module):
     def sigma_mean_abs(self):
         return self.weight_sigma.abs().mean()
 
-
 class GAT(nn.Module):
     def __init__(self, args, num_nodes):
         super().__init__()
@@ -73,11 +72,13 @@ class GAT(nn.Module):
 
     def forward(self, node_ids: torch.Tensor, neighs: torch.Tensor, mask: torch.Tensor):
         # Get initial embeddings
-        src_node_embs = self.node_embs(node_ids).unsqueeze(2)
+        src_node_embs = self.node_embs(node_ids.unsqueeze(2))
+        
         neigh_embs = self.node_embs(neighs)
         
         # Add the source node to perform attention over it as well
         neigh_embs = torch.cat((src_node_embs, neigh_embs), 2)
+        
         embs = torch.cat((
             src_node_embs.repeat(1, 1, self.args.max_neighbors+1, 1), neigh_embs), -1)
         
@@ -85,9 +86,14 @@ class GAT(nn.Module):
         #print("att_scores", att_scores)
         att_scores[:, :, 1:] += mask * -1e9
 
-        att_weights = F.softmax(self.act(att_scores), dim=2)
+        # print("neighs", neighs)
+        # print("mask", mask)
+        att_weights = F.softmax(att_scores, dim=2)
         # Mask out invalid neighbors
-        node_embs = torch.matmul(att_weights.transpose(3,2), neigh_embs).squeeze(2)
+        #print("torch.matmul(att_weights.transpose(3,2), neigh_embs).shape", torch.matmul(att_weights.transpose(3,2), neigh_embs).shape)
+        
+        node_embs = torch.matmul(att_weights.transpose(3,2), neigh_embs).view(node_ids.shape[0], node_ids.shape[1], self.args.hidden_size)
+        
         return node_embs
 
 
@@ -124,13 +130,15 @@ class NodeEncoder(nn.Module):
         self.gat = GAT(self.args, self.num_nodes)
         # self.node_embs = nn.Embedding(self.num_nodes+1, self.args.hidden_size) 
 
-        if self.args.node_embs:
-            self.load_pretrained_embs()
+        # if self.args.node_embs:
+        #     self.load_pretrained_embs()
         
         #self.node_fc = nn.Linear(self.args.hidden_size, self.args.hidden_size)
         # self.node_fc = nn.BatchNorm1d(self.args.hidden_size)
         self.fc_1 = nn.Linear(self.args.hidden_size + NUM_LOCAL_STATS + 1, self.args.hidden_size)
         self.fc_2 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
+        self.act_1 = nn.LeakyReLU(0.2)
+        self.act_2 = nn.LeakyReLU(0.2)
 
         #self.norm_1 = nn.LayerNorm(self.args.hidden_size, eps=1e-6)
         # self.norm_2 = nn.LayerNorm(self.args.hidden_size, eps=1e-10)
@@ -160,16 +168,16 @@ class NodeEncoder(nn.Module):
         #node_embs = (node_embs)
         
         # Combine node embeddings with current local statistics
-        node_embs = F.relu(self.fc_1(
+        node_embs = self.act_1(self.fc_1(
             torch.cat((node_embs, local_stats), -1)))
         #node_embs = self.norm_1(node_embs)
-        #node_embs = F.relu(node_embs)
+        #node_embs = F.gelu(node_embs)
 
         # Create final node embeddings
-        node_embs = F.relu(self.fc_2(node_embs))
+        node_embs = self.act_2(self.fc_2(node_embs))
         # node_embs = self.norm_1(node_embs)
         #node_embs = self.dropout_1(node_embs)
-        #node_embs = F.relu(node_embs)
+        #node_embs = F.gelu(node_embs)
         
         return node_embs 
 
@@ -187,6 +195,8 @@ class EdgeEncoder(nn.Module):
         #     stride=2)
         self.edge_fc_1 = nn.Linear(self.args.hidden_size * 2, self.args.hidden_size)
         self.edge_fc_2 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
+        self.act_1 = nn.LeakyReLU(0.2)
+        self.act_2 = nn.LeakyReLU(0.2)
         #self.norm_1 = nn.LayerNorm(self.args.hidden_size, eps=1e-10)
         #self.dropout_1 = nn.Dropout(self.args.drop_rate)
 
@@ -204,15 +214,15 @@ class EdgeEncoder(nn.Module):
         node_embs = node_embs.reshape(node_embs.shape[0], -1, self.args.hidden_size * 2)
         #print("node_embs", node_embs)
         #print("node_embs.count_nonzero()", node_embs.count_nonzero(), node_embs.shape)
-        edge_embs = F.relu(self.edge_fc_1(node_embs))
-        edge_embs = F.relu(self.edge_fc_2(edge_embs))
+        edge_embs = self.act_1(self.edge_fc_1(node_embs))
+        edge_embs = self.act_2(self.edge_fc_2(edge_embs))
 
         #print("edge_embs.count_nonzero()", edge_embs.count_nonzero())
         # edge_embs = self.norm_1(edge_embs.transpose(1,2))
         # edge_embs = self.dropout_1(edge_embs)
         
         # Create the final edge embeddings
-        #edge_embs = F.relu(self.edge_fc_3(edge_embs))
+        #edge_embs = F.gelu(self.edge_fc_3(edge_embs))
         # edge_embs = self.norm_1(edge_embs)
         #edge_embs = self.dropout_1(edge_embs)
         # edge_embs = self.edge_fc(edge_embs)
@@ -294,11 +304,11 @@ class SparRLNet(nn.Module):
         #     embs, state.mask) 
         
         # # # Pass the edge embeddings through FC to get Q-values
-        # v_vals = F.relu(self.v_fc_1(embs))
+        # v_vals = F.gelu(self.v_fc_1(embs))
         # v_vals = self.v_fc_2(v_vals)
         
         # # # # Pass the edge embeddings through FC to get advantage values
-        # adv_vals = F.relu(self.adv_fc_1(embs))
+        # adv_vals = F.gelu(self.adv_fc_1(embs))
         # adv_vals = self.adv_fc_2(adv_vals)
 
         # # # Derive the Q-values
@@ -308,8 +318,8 @@ class SparRLNet(nn.Module):
         # # print("share_vals", share_vals)
         # embs = (1-share_vals) * edge_embs + share_vals * embs 
 
-        # q_vals = F.relu(self.q_fc_1(embs))
-        # q_vals = F.relu(self.q_fc_2(q_vals))
+        # q_vals = F.gelu(self.q_fc_1(embs))
+        # q_vals = F.gelu(self.q_fc_2(q_vals))
 
         # print("q_vals", q_vals)
         q_vals = self.q_fc_3(embs)

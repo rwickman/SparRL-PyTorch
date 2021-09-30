@@ -1,6 +1,7 @@
 import torch
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from collections import Counter
 
 from agents.random_agent import RandomAgent
 from agents.rl_agent import RLAgent
@@ -13,10 +14,25 @@ class ResultsManager:
         self.agent._sparrl_net.eval()
         self.rand_agent = RandomAgent(args)
         self.env = env
+        self._spsp_freq = {}
 
     
-    def eval(self):
+    def eval(self):     
         final_rewards = self.eval_agent(self.agent)
+        spsp_str = ""
+        if self.args.obj == "spsp":
+            num_spsp_dists = sum([v for v in self._spsp_freq.values()])
+            for k in self._spsp_freq:
+                self._spsp_freq[k] /= num_spsp_dists
+                assert self._spsp_freq[k] <= 1
+
+            total_prob = 0
+            for dist, prob in sorted(self._spsp_freq.items()):
+                spsp_str += "{}: {}\n".format(dist, prob)
+                total_prob += prob
+        print("spsp_str:", spsp_str)
+        print("spsp_freq", self._spsp_freq)
+
         print("final_rewards", final_rewards)
         print("sparrl avg", sum(final_rewards) / len(final_rewards))
         final_rewards_rand = self.eval_agent(self.rand_agent)
@@ -82,7 +98,8 @@ class ResultsManager:
 
             # print("state.mask.shape", state.mask.shape)
             #print("org_subgraph_len", org_subgraph_len)
-            state.mask = state.mask.reshape(-1, 1, 1, org_subgraph_len)
+            state.mask = state.mask.reshape(-1, org_subgraph_len*2, self.args.max_neighbors, 1)
+            state.neighs = state.neighs.reshape(-1, org_subgraph_len*2, self.args.max_neighbors)
             # print("")
             # print("state.mask", state.mask)
             # print("state.mask.shape", state.mask.shape)
@@ -106,7 +123,7 @@ class ResultsManager:
 
     def run_episode(self, agent, T: int):
         #self.env.preprune(self.args.T_eval)
-        for t in range(T):
+        for t in tqdm(range(T)):
             state = self.env.create_state(self.args.subgraph_len, T, t)
             
             if isinstance(agent, RLAgent):
@@ -125,6 +142,15 @@ class ResultsManager:
         elif self.args.obj == "com":
             return self.env.reward_man._com_detect.ARI_louvain()
         elif self.args.obj == "spsp":
+            if self.args.eval:
+                spsp_diff = self.env.reward_man.spsp_diff()
+                spsp_counter = Counter(spsp_diff)
+                for k in spsp_counter:
+                    assert k >= 0
+                    if k not in self._spsp_freq:
+                        self._spsp_freq[k] = 0
+                    self._spsp_freq[k] += spsp_counter[k]
+            
             return self.env.reward_man._compute_spsp_reward()
             
 
