@@ -85,6 +85,9 @@ if __name__ == "__main__":
             help="True community labels.")
     parser.add_argument("--num_spsp_pairs", type=int, default=8192,
             help="Number of shortest path pairs.")
+    parser.add_argument("--max_neighbors", type=int, default=64,
+            help="Maximum number of neighbors to pay attention to.")
+
 
     graph_args = parser.add_argument_group("Graph")
     graph_args.add_argument("--edge_list", required=True,

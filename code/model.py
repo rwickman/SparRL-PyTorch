@@ -62,18 +62,67 @@ class NoisyLinear(nn.Module):
     def sigma_mean_abs(self):
         return self.weight_sigma.abs().mean()
 
+
+class GAT(nn.Module):
+    def __init__(self, args, num_nodes):
+        super().__init__()
+        self.args = args
+        self.node_embs = nn.Embedding(num_nodes + 1, self.args.hidden_size) 
+        self.a = nn.Linear(self.args.hidden_size * 2, 1)
+        self.act = nn.LeakyReLU(0.2)
+
+    def forward(self, node_ids: torch.Tensor, neighs: torch.Tensor, mask: torch.Tensor):
+        # Get initial embeddings
+        src_node_embs = self.node_embs(node_ids).unsqueeze(2)
+        neigh_embs = self.node_embs(neighs)
+        
+        # Add the source node to perform attention over it as well
+        neigh_embs = torch.cat((src_node_embs, neigh_embs), 2)
+        embs = torch.cat((
+            src_node_embs.repeat(1, 1, self.args.max_neighbors+1, 1), neigh_embs), -1)
+        
+        att_scores = self.act(self.a(embs))
+        #print("att_scores", att_scores)
+        att_scores[:, :, 1:] += mask * -1e9
+
+        att_weights = F.softmax(self.act(att_scores), dim=2)
+        # Mask out invalid neighbors
+        node_embs = torch.matmul(att_weights.transpose(3,2), neigh_embs).squeeze(2)
+        return node_embs
+
+
+
+        
+
+        # Get a nodes adjacent edges
+        # if node_id > 0:
+        #     neighs.append(node_id)
+        #     neighs = torch.tensor(neighs, device=device, dtype=torch.int32)            
+        #     if len(neighs) > 1:
+        #         # Perform attention over neighbors
+        #         neigh_embs = self.node_embs(neighs)
+        #         embs = torch.cat((neigh_embs, self.node_embs(node_id).repeat(len(neighs), 1)), -1)
+        #         att_scores = self.a(embs)
+        #         att_weights = F.softmax(self.act(att_scores), dim=0)
+        #         node_emb = torch.matmul(att_weights.t(), neigh_embs)
+        #     else:
+        #         # Use original node embeddings
+        #         node_emb = self.node_embs(node_id)
+        # else:
+        #     node_emb = self.node_embs(node_id)
+
+        # return node_emb
+        
+        
+
 class NodeEncoder(nn.Module):
     """Create node embedding using local statistics."""
     def __init__(self, args, num_nodes: int):
         super().__init__()
         self.args = args
         self.num_nodes = num_nodes
-        
-        self.node_embs = nn.Embedding(self.num_nodes+1, self.args.hidden_size) 
-        #self.norm_1 = nn.utils.weight_norm(self.node_embs)
-        self.norm_1 = nn.BatchNorm1d(self.args.hidden_size)
-        # if not self.args.load and self.args.node_embs:
-        #     self.load_pretrained_embs()
+        self.gat = GAT(self.args, self.num_nodes)
+        # self.node_embs = nn.Embedding(self.num_nodes+1, self.args.hidden_size) 
 
         if self.args.node_embs:
             self.load_pretrained_embs()
@@ -94,10 +143,14 @@ class NodeEncoder(nn.Module):
         pretrained_node_embs = torch.cat((self.node_embs(torch.tensor([0])), weights_dict["node_embs"])) 
         self.node_embs = self.node_embs.from_pretrained(pretrained_node_embs, freeze=True)
 
-    def forward(self, subgraph: torch.Tensor, local_stats: torch.Tensor):
+    def forward(self, state):
         # Get initial node embeddings
+        subgraph = state.subgraph
+        local_stats = torch.cat((state.local_stats, state.global_stats.repeat(1, state.local_stats.shape[1], 1)), -1)
         batch_size = subgraph.shape[0]
-        node_embs = self.node_embs(subgraph)
+        
+        
+        node_embs = self.gat(subgraph, state.neighs, state.mask)
         
         #node_embs = self.norm_1(node_embs.reshape(-1, self.args.hidden_size))
         #node_embs = node_embs.reshape(batch_size, -1, self.args.hidden_size)
@@ -227,7 +280,7 @@ class SparRLNet(nn.Module):
         batch_size = state.subgraph.shape[0]
 
         # Create node embedding
-        node_embs = self.node_enc(state.subgraph, torch.cat((state.local_stats, state.global_stats.repeat(1, state.local_stats.shape[1], 1)), -1))
+        node_embs = self.node_enc(state)
 
         # Create edge embeddings
         embs = self.edge_enc(node_embs)

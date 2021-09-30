@@ -106,13 +106,14 @@ class AgentManager:
             ex.state.local_stats = ex.state.local_stats.to(device)
             ex.state.global_stats = ex.state.global_stats.to(device)
             ex.state.mask = ex.state.mask.to(device)
-
+            ex.state.neighs = ex.state.neighs.to(device)
             if ex.next_state:
                 ex.next_state.subgraph = ex.next_state.subgraph.to(device)
                 ex.next_state.local_stats = ex.next_state.local_stats.to(device)
                 ex.next_state.global_stats = ex.next_state.global_stats.to(device)
                 ex.next_state.mask = ex.next_state.mask.to(device)
-
+                ex.next_state.neighs = ex.next_state.neighs.to(device)
+            
             self._rl_agent.add_ex(ex)
 
         # Get the average reward
@@ -131,15 +132,17 @@ class AgentManager:
         subgraphs = torch.zeros(batch_size, self.args.subgraph_len * 2, device=device, dtype=torch.int32)
         global_stats = torch.zeros(batch_size, 1, NUM_GLOBAL_STATS, device=device)
         local_stats = torch.zeros(batch_size, self.args.subgraph_len * 2, NUM_LOCAL_STATS, device=device)
-        masks = torch.zeros(batch_size, 1, 1, self.args.subgraph_len, device=device)
-        
+        neighs = torch.zeros(batch_size, self.args.subgraph_len*2, self.args.max_neighbors, device=device, dtype=torch.int32)
+        mask = torch.ones(batch_size, self.args.subgraph_len*2, self.args.max_neighbors, 1, device=device)
         for i, state in enumerate(states):
             subgraphs[i, :state.subgraph.shape[1]] = state.subgraph
             global_stats[i] = state.global_stats
             local_stats[i, :state.local_stats.shape[1]] = state.local_stats
-            masks[i] = state.mask
+            mask[i] = state.mask
+            neighs[i] = state.neighs
         
-        return State(subgraphs, global_stats, local_stats, masks)
+        
+        return State(subgraphs, global_stats, local_stats, mask, neighs)
 
     def run(self):
         # Run several batch of episodes

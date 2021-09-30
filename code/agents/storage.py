@@ -7,6 +7,7 @@ class State:
     global_stats: torch.Tensor
     local_stats: torch.Tensor
     mask: torch.Tensor = None
+    neighs: list = None
 
 
 @dataclass

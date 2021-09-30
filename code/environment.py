@@ -143,15 +143,23 @@ class Environment:
         temp_local_stats[0, :local_stats.shape[1]] = local_stats
         local_stats = temp_local_stats
 
+        # Get the neighbors
+        neighs = torch.zeros(1, self.args.subgraph_len*2, self.args.max_neighbors, device=self._device, dtype=torch.int32)
+        mask = torch.ones(1, self.args.subgraph_len*2, self.args.max_neighbors, 1, device=self._device)
+        for i, node_id in enumerate(subgraph[0]):
+            if node_id != 0:
+                neighs_list = list(self._graph._G.neighbors(int(node_id)))
+                if len(neighs_list) > self.args.max_neighbors:
+                    random.shuffle(neighs_list)
+                neighs[0, i, :len(neighs_list)] = torch.tensor(neighs_list[:self.args.max_neighbors], device=self._device)
+                mask[0, i, :len(neighs_list)] = 0
 
-        # Create the mask
-        mask = torch.zeros(1, 1, 1, self.args.subgraph_len, device=self._device)
-        # Mask out null edges (if this subgraph is shorter than expected)
-        mask[0, 0, 0, subgraph_len:] = 1
+
+                    
         # # Don't mask out the global stats
         # mask[0, 0, 0, -1] = 0
         
-        return State(subgraph, global_stats, local_stats, mask)
+        return State(subgraph, global_stats, local_stats, mask, neighs)
 
     def preprune(self, T: int, fixed_pct: float = None) -> int:
         """Preprune edges from the graph before an episode.
