@@ -33,12 +33,14 @@ class RewardManager:
             # Get the prior page rank scores before training
             self._prior_pr = self._graph.get_page_ranks()
     
-    def compute_reward(self):
+    def compute_reward(self, edge=None):
         if self.args.obj == "spsp":
             # Return reward for shortest path
             cur_reward = self._compute_spsp_reward()
         elif self.args.obj == "com":
-            cur_reward = self._compute_com_reward()
+            #cur_reward = self._compute_com_reward()
+            cur_reward = self.edge_com_reward(edge)
+        
         elif self.args.obj == "spearman":
             cur_reward = self._compute_spearman_reward()
         else:
@@ -73,9 +75,9 @@ class RewardManager:
 
     def _compute_spsp_reward(self):
         cur_spsp_dists = self._compute_spsp_dists()
-        mse = np.mean(self._spsp_dists - cur_spsp_dists)
+        avg_dist = np.mean(self._spsp_dists - cur_spsp_dists)
         self._spsp_dists = cur_spsp_dists
-        return mse
+        return avg_dist
 
     def compute_sparmanr(self):
         cur_pr = list(self._graph.get_page_ranks().values()) 
@@ -92,6 +94,17 @@ class RewardManager:
         cur_ari = self._com_detect.ARI_louvain()
         reward = cur_ari - self._prev_ari
         self._prev_ari = cur_ari
+        return reward
+
+    def edge_com_reward(self, edge):
+        if edge is None:
+            return 0
+            
+        if self._com_detect.is_edge_same_com(edge):
+            reward = -1
+        else:
+            reward = 1
+        
         return reward
     
     def _setup_spsp(self, part=None):

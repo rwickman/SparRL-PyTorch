@@ -86,6 +86,8 @@ class Environment:
         self._removed_edges.add(edge)
         self._graph.del_edge(edge[0], edge[1])
 
+        return edge
+
     def create_state(self, subgraph_len: int, T: int, t: int, num_preprune: int = 0):
         """Create the current state for the episode."""
         # Clip subgraph_len to valid range
@@ -240,10 +242,10 @@ class Environment:
                 edge_idx = self.agent(state)
             
             # Prune the edge
-            self.prune_edge(edge_idx, state.subgraph)
+            pruned_edge = self.prune_edge(edge_idx, state.subgraph)
 
             # Compute the reward for the sparsification decision
-            reward = self.reward_man.compute_reward()
+            reward = self.reward_man.compute_reward(pruned_edge)
 
             prev_state = state
 

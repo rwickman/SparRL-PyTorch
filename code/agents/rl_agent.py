@@ -410,7 +410,12 @@ class RLAgent(Agent):
         self._train_dict["mse_losses"].append(float(loss.detach()))
 
         # Update the DQN target parameters
-        # if (self._train_dict["update_step"] + 1) % 32 == 0:
+        # if (self._train_dict["update_step"] + 1) % 1024 == 0:
+        #     print("\n", "*" * 100)
+        #     print("UPDATING TARGET")
+        #     print("*" * 100, "\n")
+        #     self._update_target()
+        
         self._update_target()
         
         # Print out q_values and td_targets for debugging/progress updates
@@ -423,10 +428,10 @@ class RLAgent(Agent):
             # print("self._sparrl_net.q_fc_3.weight_mu.grad", self._sparrl_net.q_fc_3.weight.grad.norm())
 
 
-            print("self._sparrl_net.node_enc.gat.node_embs.weight.grad", self._sparrl_net.node_enc.gat.node_embs.weight.grad)
-            print("self._sparrl_net.node_enc.gat.node_embs.weight.grad", self._sparrl_net.node_enc.gat.node_embs.weight.grad.max())
-            print("self._sparrl_net.node_enc.gat.node_embs.weight.grad", self._sparrl_net.node_enc.gat.node_embs.weight.grad.min())
-            print("self._sparrl_net.node_enc.gat.node_embs.weight.grad", self._sparrl_net.node_enc.gat.node_embs.weight.grad.norm())
+            # print("self._sparrl_net.node_enc.gat.node_embs.weight.grad", self._sparrl_net.node_enc.gat.node_embs.weight.grad)
+            # print("self._sparrl_net.node_enc.gat.node_embs.weight.grad", self._sparrl_net.node_enc.gat.node_embs.weight.grad.max())
+            # print("self._sparrl_net.node_enc.gat.node_embs.weight.grad", self._sparrl_net.node_enc.gat.node_embs.weight.grad.min())
+            # print("self._sparrl_net.node_enc.gat.node_embs.weight.grad", self._sparrl_net.node_enc.gat.node_embs.weight.grad.norm())
 
             print("self.epsilon_threshold:", self.epsilon_threshold)
             print("q_next", q_next[0:2])
