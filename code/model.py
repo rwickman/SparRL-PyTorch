@@ -241,40 +241,9 @@ class SparRLNet(nn.Module):
         
         self.node_enc = NodeEncoder(self.args, self.num_nodes)
         self.edge_enc = EdgeEncoder(self.args)
-        # self.global_stats_enc = GlobalStatisticsEncoder(self.args)
-        # self.norm_1 = nn.LayerNorm(self.args.hidden_size)
-        # self.edge_mha_enc = Encoder(self.args)
 
-        
-
-        # # self.share_gate = nn.Linear(self.args.hidden_size, 1)
-        # # self.share_gate_act = nn.Sigmoid()
-        
-        # Mapping to q-values for pruning edges        
-        #self.q_fc_1 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
-        #self.v_fc_2 = nn.Linear(self.args.hidden_size, 1)
-        
-        # self.v_fc_1 = NoisyLinear(self.args, self.args.hidden_size, self.args.hidden_size)
-        # self.v_fc_2 = NoisyLinear(self.args, self.args.hidden_size, 1)
-
-        # self.adv_fc_1 = NoisyLinear(self.args, self.args.hidden_size, self.args.hidden_size)
-        # self.adv_fc_2 = NoisyLinear(self.args, self.args.hidden_size, 1)
-
-
-        # self.v_fc_1 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
-        # self.v_fc_2 = nn.Linear(self.args.hidden_size, 1)
-
-        # self.adv_fc_1 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
-        # self.adv_fc_2 = nn.Linear(self.args.hidden_size, 1)
-
-
-        # self.q_fc_1 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
-        # self.q_fc_2 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
         self.q_fc_3 = nn.Linear(self.args.hidden_size, 1)
-        # self.q_fc_3 = nn.Linear(self.args.hidden_size, self.args.hidden_size)
-        # self.q_fc_4 = nn.Linear(self.args.hidden_size, 1)
-        #self.q_fc_1 = NoisyLinear(self.args, self.args.hidden_size, self.args.hidden_size)
-        #self.q_fc_2 = NoisyLinear(self.args, self.args.hidden_size, 1)
+
 
     def reset_noise(self):
         pass
@@ -295,33 +264,6 @@ class SparRLNet(nn.Module):
         # Create edge embeddings
         embs = self.edge_enc(node_embs)
 
-        # Create global statistics embedding
-        # global_stats_emb = self.global_stats_enc(state.global_stats)
-        
-        # Perform MHA over edge embeddings (batch size, # edges, hidden size)
-        # embs = self.norm_1(embs)
-        # embs = self.edge_mha_enc(
-        #     embs, state.mask) 
-        
-        # # # Pass the edge embeddings through FC to get Q-values
-        # v_vals = F.gelu(self.v_fc_1(embs))
-        # v_vals = self.v_fc_2(v_vals)
-        
-        # # # # Pass the edge embeddings through FC to get advantage values
-        # adv_vals = F.gelu(self.adv_fc_1(embs))
-        # adv_vals = self.adv_fc_2(adv_vals)
-
-        # # # Derive the Q-values
-        # q_vals = v_vals + adv_vals - adv_vals.mean(dim=-1, keepdim=True)
-        
-        # share_vals = self.share_gate_act(self.share_gate(embs))
-        # # print("share_vals", share_vals)
-        # embs = (1-share_vals) * edge_embs + share_vals * embs 
-
-        # q_vals = F.gelu(self.q_fc_1(embs))
-        # q_vals = F.gelu(self.q_fc_2(q_vals))
-
-        # print("q_vals", q_vals)
         q_vals = self.q_fc_3(embs)
         #print("q_vals", q_vals)
         if batch_size == 1:

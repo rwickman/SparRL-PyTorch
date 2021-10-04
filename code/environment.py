@@ -74,9 +74,15 @@ class Environment:
         """Prune an edge from the subgraph and the graph."""
         edge = [subgraph[0, 2*edge_idx], subgraph[0, 2*edge_idx + 1]]
         
+                    
+
+
         # Shift back to original node ids
         #edge = (int(edge[0] - 1), int(edge[1] - 1))
         edge = (int(edge[0]), int(edge[1]))
+
+        if self.args.obj == "spsp" and not self.args.eval:
+            self.reward_man.sample_spsp_dists(edge)
 
         if not (edge[0] >= 0 and edge[1] >= 0):
             raise Exception(f"INVALID EDGE {edge} WITH IDX {edge_idx}")
@@ -240,7 +246,8 @@ class Environment:
             # Get edge to prune
             with torch.no_grad():
                 edge_idx = self.agent(state)
-            
+
+
             # Prune the edge
             pruned_edge = self.prune_edge(edge_idx, state.subgraph)
 

@@ -3,6 +3,7 @@ import numpy as np
 from multiprocessing import Lock, Value
 from community_detection import CommunityDetection
 from scipy import stats
+import math
 
 class RewardManager:
     """Manages the reward acquired by the agent."""
@@ -16,6 +17,8 @@ class RewardManager:
         self._reward_json = os.path.join(self.args.save_dir, "rewards.json")
         if self.args.obj == "com":
             self._com_detect = CommunityDetection(self.args, self._graph)
+        self._valid_pairs = set()
+        
 
 
 
@@ -75,9 +78,10 @@ class RewardManager:
 
     def _compute_spsp_reward(self):
         cur_spsp_dists = self._compute_spsp_dists()
-        avg_dist = np.mean(self._spsp_dists - cur_spsp_dists)
-        self._spsp_dists = cur_spsp_dists
-        return avg_dist
+        if len(self._spsp_dists) > 0:
+            avg_dist = np.mean(np.array(self._spsp_dists) - cur_spsp_dists)
+            self._spsp_dists = cur_spsp_dists.tolist()
+            return avg_dist
 
     def compute_sparmanr(self):
         cur_pr = list(self._graph.get_page_ranks().values()) 
@@ -99,15 +103,66 @@ class RewardManager:
     def edge_com_reward(self, edge):
         if edge is None:
             return 0
-            
+    
+        #reward = -self._com_detect.jaccard(edge)
+        reward = self. _compute_com_reward()
         if self._com_detect.is_edge_same_com(edge):
-            reward = -1
+            reward += -1
+        #     # for node_id in edge:
+                
+        #     #     neighs = self._graph._G.neighbors(int(node_id))
+        #     #     for dst_node_id in neighs:
+        #     #         if self._com_detect.is_edge_same_com([node_id, dst_node_id]):
+        #     #             reward =+ 1
+        #     #             break
+            
+            
         else:
-            reward = 1
+            reward += 1
         
         return reward
     
+    def sample_spsp_dists(self, edge):
+        num_samples = 128
+        node_ids = self._graph.get_node_ids()
+        
+        # Get distance for at least this pair
+        self._spsp_pairs.append(edge)
+        
+        self._spsp_dists.append(len(self._graph.get_shortest_path(edge[0], edge[1])) - 1)
+        
+
+        for src_id in edge:
+            dst_nodes = random.sample(node_ids, k=num_samples*2)
+            for dst_id in dst_nodes:
+                path_len = len(self._graph.get_shortest_path(src_id, dst_id)) - 1
+                # Check if path exists
+                if path_len > 0:
+                    self._spsp_dists.append(path_len)
+                    self._spsp_pairs.append((src_id, dst_id))
+                    
+                
+                if len(self._spsp_pairs) >= self.args.num_spsp_pairs:    
+                    break
+        
+        for src_id in edge:
+            i = 0
+            for dst_id, value in self._graph.single_source_shortest_path(src_id).items():
+                if i > num_samples:
+                    break
+                if dst_id == src_id:
+                    continue
+                self._spsp_pairs.append((src_id, dst_id))
+                self._spsp_dists.append(value)
+                i += 1
+        #self._spsp_dists = np.array(self._spsp_dists)
+
+
+
+
     def _setup_spsp(self, part=None):
+        self._spsp_pairs = []
+        self._spsp_dists = []
         self._org_edges = set(self._graph._G.nodes())
         # Sample random spsp_pairs
         if part is None:
@@ -115,37 +170,44 @@ class RewardManager:
         else:
             node_ids = part.get_node_ids()
 
-        self._spsp_pairs = []
-        self._spsp_dists = []
         random.shuffle(node_ids)
         
-        src_nodes = random.choices(node_ids, k=self.args.num_spsp_pairs*2)
-        dst_nodes = random.choices(node_ids, k=self.args.num_spsp_pairs*2)
-        pairs = zip(src_nodes, dst_nodes)
-        for src_id, dst_id in pairs:
-            if src_id != dst_id:
-                path_len = len(self._graph.get_shortest_path(src_id, dst_id)) - 1
-                # Check if path exists
-                if path_len > 0:
-                    self._spsp_dists.append(path_len)
-                    self._spsp_pairs.append((src_id, dst_id))
-                
+        
+       
+        # Acquire a minimum number of shortest-path distances
+        while True:
+            src_nodes = random.choices(node_ids, k=math.ceil(self.args.num_spsp_pairs * 0.1))
+            dst_nodes = random.choices(node_ids, k=math.ceil(self.args.num_spsp_pairs * 0.1))
+            for src_id, dst_id in zip(src_nodes, dst_nodes):
+                pair = (src_id, dst_id)
+                if pair not in self._valid_pairs:    
+                    path_len = len(self._graph.get_shortest_path(src_id, dst_id)) - 1
+                    # Check if path exists
+                    if path_len > 0:
+                        self._valid_pairs.add((pair, path_len))
             
-            if len(self._spsp_pairs) >= self.args.num_spsp_pairs:    
+            if len(self._valid_pairs) >= self.args.num_spsp_pairs:
                 break
 
-        self._spsp_dists = np.array(self._spsp_dists)
+
+        valid_pairs = random.sample(self._valid_pairs, k=min(self.args.num_spsp_pairs, len(self._valid_pairs)))
+        for pair, dist in valid_pairs:
+            self._spsp_pairs.append(pair)
+            self._spsp_dists.append(dist)            
+            if len(self._spsp_pairs) >= self.args.num_spsp_pairs:    
+                break
+        # self._spsp_dists = np.array(self._spsp_dists
         
     def _compute_spsp_dists(self, sub_one=False):
         """Compute the spsp distances between all the pairs."""
         spsp_dists = []
         for src_id, dst_id in self._spsp_pairs:
             if not sub_one:
+                #print(src_id, dst_id, self._graph.get_shortest_path(src_id, dst_id))
                 dist = len(self._graph.get_shortest_path(src_id, dst_id)) - 1
             else:
                 dist = len(self._graph.get_shortest_path(src_id - 1, dst_id - 1)) - 1
             # Check if path exists
-            assert dist != 0
             if dist == -1:
                 dist = self._graph.num_nodes
 
@@ -164,7 +226,7 @@ class RewardManager:
         
     def spsp_diff(self, sub_one=False):
         cur_spsp_dists = self._compute_spsp_dists()
-        return self._spsp_dists - cur_spsp_dists
+        return  cur_spsp_dists - self._spsp_dists
 
     def reset(self, part=None):
         """Reset rewards states."""

@@ -62,18 +62,10 @@ class AgentManager:
             self.args.expert_lam = 0.0
             self.args.expert_epsilon = -1.0
 
-    def update_T_max(self):
-        
-        self.args.T_max.value = min(max(
-            int(((self._rl_agent._train_dict["episodes"] + 1) / self.args.warmup_eps) * self.org_T_max), 2), self.org_T_max)
-
-        print("self.args.T_max.value", self.args.T_max.value)
-
     def _init_workers(self):
         """Initialize the child processes with duplicate environments."""
         self._child_processes = []
         print("Creating workers.")
-        self.update_T_max()
         for i in range(self.args.workers):
             # Stores the states from the AgentWorker
             state_queue = mp.Queue(1)
@@ -147,7 +139,6 @@ class AgentManager:
     def run(self):
         # Run several batch of episodes
         for e_i in range(self.args.episodes // self.args.workers):
-            self.update_T_max()
             # Keep up with processes that have episodes still running
             nonterm_p_ids = list(range(len(self._child_processes)))
             

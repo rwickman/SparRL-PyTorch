@@ -94,11 +94,12 @@ class Graph:
     def copy(self):
         return Graph(self.args)
 
-    def get_node_ids(self):
-        node_ids = []
-        for node in self._G:
-            node_ids.append(node)
-        return node_ids
+    def get_node_ids(self) -> list:
+        # node_ids = []
+        return list(self._G.nodes())
+        # for node in self._G:
+        #     node_ids.append(node)
+        # return node_ids
     
     def partition(self):
         """Partition the graph
@@ -149,3 +150,16 @@ class Graph:
         """Replace underlying graph with a new graph."""
         self._G = G
         self._relabel_nodes()
+    
+    def write_edge_list(self, edge_filename):
+        with open(edge_filename, "w") as f:
+            edges = list(self._G.edges())
+            for i, edge in enumerate(edges):
+                line = f"{edge[0] - 1} {edge[1] - 1}"
+                if i + 1< len(edges):
+                    line += "\n"
+                f.write(line)
+
+    def single_source_shortest_path(self, node_id: int, cutoff=5):
+        return nx.single_source_shortest_path_length(self._G, node_id, cutoff=cutoff)
+        

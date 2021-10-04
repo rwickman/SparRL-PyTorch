@@ -192,6 +192,8 @@ if __name__ == "__main__":
     eval_args.add_argument("--eval_batch_size", type=int, default=8,
             help="Batch size for evaluation.")
 
+    eval_args.add_argument("--spar_edge_list", default="",
+            help="Write out sparsified edge list.")
 
 
     eval_args.add_argument("--eval", action="store_true",

@@ -52,6 +52,9 @@ class CommunityDetection:
         
         return self._true_communities[edge[0] - 1] == self._true_communities[edge[1] - 1] 
 
+    def jaccard(self, edge):
+        for u, v, p in nx.jaccard_coefficient(self._graph._G, [edge]):
+            return float(p)
 
     # def fix_labels(self, found_labels):
     #     com_dict = self._create_com_dict(found_labels)

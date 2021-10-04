@@ -5,6 +5,7 @@ import torch.optim as optim
 import numpy as np
 import os
 import json
+import random
 
 from model import SparRLNet
 from conf import *
@@ -32,6 +33,10 @@ class RewardScaler:
         if self._end < self.args.reward_scaler_window:
             self._rewards[self._end] = reward
             self._end += 1
+        else:
+            self._rewards[random.randint(0, self.args.reward_scaler_window-1)] = reward
+
+
         
     def scale_reward(self, reward):
         """Scale a given reward."""
@@ -313,7 +318,7 @@ class RLAgent(Agent):
         Returns:
             the loss for the batch
         """
-        is_ws, exs, indices = self._memory.sample(self.args.batch_size, self._train_dict["episodes"])
+        is_ws, exs, indices = self._memory.sample(self.args.batch_size, self._train_dict["update_step"])
         td_targets = torch.zeros(self.args.batch_size, device=device)
         
         states, actions, rewards, next_states, next_state_mask, is_experts, gammas = self._unwrap_exs(exs)
