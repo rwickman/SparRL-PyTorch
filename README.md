@@ -5,9 +5,9 @@
 python3 code/main.py --edge_list graphs/karate/karate.edgelist --episodes 16000 --T_max 17 --save_dir karate_spearman_models/ --subgraph_len 32 --obj spearman
 ```
 
-## Evalute
+## Evalute over 8 episodes
 ```code
-python3 code/main.py --edge_list graphs/karate/karate.edgelist --episodes 16000 --T_max 17 --save_dir karate_spearman_models/ --subgraph_len 32 --obj spearman
+python3 code/main.py --edge_list graphs/karate/karate.edgelist --episodes 8 --T_max 17 --save_dir karate_spearman_models/ --subgraph_len 32 --obj spearman --load --eval
 ```
 
 ## Show training graphs
