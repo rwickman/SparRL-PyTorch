@@ -33,20 +33,18 @@ class RewardScaler:
         if self._end < self.args.reward_scaler_window:
             self._rewards[self._end] = reward
             self._end += 1
-        else:
-            self._rewards[random.randint(0, self.args.reward_scaler_window-1)] = reward
 
 
         
     def scale_reward(self, reward):
         """Scale a given reward."""
         if self._end >= 2: 
-            reward = (reward - self._rewards[:self._end].mean()) / self._rewards[:self._end].std()
+            reward = (reward - self._rewards[:self._end].mean()) / (self._rewards[:self._end].std() + 1e-7)
             reward = reward * 0.1
             self._max_reward = max(self._max_reward, reward.abs())
-
-            reward = torch.clip(reward, -1, 1)
-            #reward = reward / self._max_reward
+        else:
+            reward = reward * 0.1
+            reward = max(min(reward, 1), -1)
         
         return reward
 
@@ -167,7 +165,6 @@ class RLAgent(Agent):
     def add_ex(self, ex):
         """Add a time step of experience."""
         if not self.args.eval and self._memory:
-            ex.is_expert = self._should_add_expert_ex
             self._ex_buffer.append(ex)
  
     def _update_target(self):
@@ -211,10 +208,10 @@ class RLAgent(Agent):
             cur_gamma = self.args.gamma
 
             # Update the experience reward to be the n-step return
-            if i + self.args.dqn_steps < len(self._ex_buffer):
-                self._ex_buffer[i].reward = rewards.dot(self._gam_arr)
-                self._ex_buffer[i].next_state = self._ex_buffer[i + self.args.dqn_steps].state
-                cur_gamma = cur_gamma ** self.args.dqn_steps
+            # if i + self.args.dqn_steps < len(self._ex_buffer):
+            #     self._ex_buffer[i].reward = rewards.dot(self._gam_arr)
+            #     self._ex_buffer[i].next_state = self._ex_buffer[i + self.args.dqn_steps].state
+            #     cur_gamma = cur_gamma ** self.args.dqn_steps
 
             # Update gamma based on n-step return
             self._ex_buffer[i].gamma = cur_gamma
@@ -233,13 +230,14 @@ class RLAgent(Agent):
 
                     # Compute TD target based on target function q-value for next state
                     q_next_target = self._sparrl_net_tgt(self._ex_buffer[i].next_state)[next_action]
-                    td_target = self._ex_buffer[i].reward + self._ex_buffer[i].gamma *  q_next_target
+                    td_target = self._reward_scaler.scale_reward(self._ex_buffer[i].reward) + self._ex_buffer[i].gamma *  q_next_target
                     # print("q_next_target",  self._sparrl_net_tgt(self._ex_buffer[i].next_state))
                     # print("td_target", td_target, "\n")
                 else:
-                    td_target = self._ex_buffer[i].reward
+                    td_target = self._reward_scaler.scale_reward(self._ex_buffer[i].reward)
 
             td_error = td_target - q_val
+
             self._memory.add(self._ex_buffer[i], td_error)      
 
             # Shift the rewards down
@@ -466,26 +464,19 @@ class RLAgent(Agent):
         """
         batch_size = state.subgraph.shape[0]
 
-        # Set for when experience is added
-        self._should_add_expert_ex = self._train_dict["episodes"] < self.args.expert_episodes
-
-        if self._should_add_expert_ex and not self.args.eval and not argmax:
-            # Run through expert policy
-            action = self._expert_agent(state)
+        # Get the q-values for the state
+        q_vals = self._sparrl_net(state)
+        # Sample an action (i.e., edge to prune)
+        if batch_size > 1:
+            action = []
+            for i in range(batch_size):
+                valid_actions = self._get_valid_edges(state.subgraph[i])
+                cur_action = int(self._sample_action(q_vals[i][valid_actions], argmax))
+                action.append(int(valid_actions[cur_action])) 
         else:
-            # Get the q-values for the state
-            q_vals = self._sparrl_net(state)
-            # Sample an action (i.e., edge to prune)
-            if batch_size > 1:
-                action = []
-                for i in range(batch_size):
-                    valid_actions = self._get_valid_edges(state.subgraph[i])
-                    cur_action = int(self._sample_action(q_vals[i][valid_actions], argmax))
-                    action.append(int(valid_actions[cur_action])) 
-            else:
-                valid_actions = self._get_valid_edges(state.subgraph[0])
-                action = self._sample_action(q_vals[valid_actions], argmax)
-                action = int(valid_actions[action])
+            valid_actions = self._get_valid_edges(state.subgraph[0])
+            action = self._sample_action(q_vals[valid_actions], argmax)
+            action = int(valid_actions[action])
                 
 
         return action

@@ -23,7 +23,12 @@ def main(args):
     axs[0].set(ylabel="Avg. Episode Reward")
     axs[1].plot(moving_average(train_dict["mse_losses"]))
     axs[1].set(ylabel="MSE Loss")
-    axs[2].plot(agent_man_dict["eval_rewards"])
+    
+    if args.smooth_eval:
+        axs[2].plot(moving_average(agent_man_dict["eval_rewards"]))
+    else:
+        axs[2].plot(agent_man_dict["eval_rewards"])
+
     axs[2].set(ylabel="Final Reward")
 
     plt.show()
@@ -38,4 +43,6 @@ if __name__ == "__main__":
     parser.add_argument("--reward_smooth_w", type=int, default=8,
                     help="Window size for reward smoothing plot.")
     
+    parser.add_argument("--smooth_eval", action="store_true",
+                    help="Smooth the eval rewards.")
     main(parser.parse_args())

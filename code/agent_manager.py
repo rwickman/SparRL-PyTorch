@@ -190,10 +190,13 @@ class AgentManager:
 
 
             if self.args.T_eval > 0 and (e_i + 1) % self.args.eval_iter == 0:
-                eval_reward = self._results_man.run_rl_eval(self._rl_agent, self.args.T_eval)
-                self._agent_man_dict["eval_rewards"].append(eval_reward)
+                self.args.eval = True
                 self._results_man.env.reset()
-
+                eval_reward = self._results_man.run_rl_eval(self._rl_agent, self.args.T_eval)
+                self.args.eval = False
+                print("EVAL REWARD: ", eval_reward)
+                self._agent_man_dict["eval_rewards"].append(eval_reward)
+                
             # if self._rl_agent.is_ready_to_train:
             #     # Train the model
             #     print("Training")

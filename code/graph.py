@@ -160,6 +160,6 @@ class Graph:
                     line += "\n"
                 f.write(line)
 
-    def single_source_shortest_path(self, node_id: int, cutoff=5):
+    def single_source_shortest_path(self, node_id: int, cutoff=50):
         return nx.single_source_shortest_path_length(self._G, node_id, cutoff=cutoff)
         

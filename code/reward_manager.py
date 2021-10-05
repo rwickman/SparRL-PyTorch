@@ -82,6 +82,8 @@ class RewardManager:
             avg_dist = np.mean(np.array(self._spsp_dists) - cur_spsp_dists)
             self._spsp_dists = cur_spsp_dists.tolist()
             return avg_dist
+        else:
+            return 0
 
     def compute_sparmanr(self):
         cur_pr = list(self._graph.get_page_ranks().values()) 
@@ -122,42 +124,42 @@ class RewardManager:
         
         return reward
     
-    def sample_spsp_dists(self, edge):
-        num_samples = 128
-        node_ids = self._graph.get_node_ids()
-        
+    def sample_spsp_dists(self, edge): 
         # Get distance for at least this pair
-        self._spsp_pairs.append(edge)
-        
-        self._spsp_dists.append(len(self._graph.get_shortest_path(edge[0], edge[1])) - 1)
-        
+        num_samples = 128
+        node_ids = self._graph.get_node_ids() 
+        self._spsp_pairs = []
+        self._spsp_dists = []
 
-        for src_id in edge:
-            dst_nodes = random.sample(node_ids, k=num_samples*2)
-            for dst_id in dst_nodes:
-                path_len = len(self._graph.get_shortest_path(src_id, dst_id)) - 1
-                # Check if path exists
-                if path_len > 0:
-                    self._spsp_dists.append(path_len)
-                    self._spsp_pairs.append((src_id, dst_id))
-                    
-                
-                if len(self._spsp_pairs) >= self.args.num_spsp_pairs:    
-                    break
+        self._spsp_pairs.append(edge)
+        pairs_set = set()
+        self._spsp_dists.append(len(self._graph.get_shortest_path(edge[0], edge[1])) - 1)
+
         
         for src_id in edge:
             i = 0
-            for dst_id, value in self._graph.single_source_shortest_path(src_id).items():
-                if i > num_samples:
+            paths = list(self._graph.single_source_shortest_path(src_id).items())
+            random.shuffle(paths)
+            for dst_id, value in paths:
+                if i > 512:
                     break
                 if dst_id == src_id:
                     continue
+                pairs_set.add((src_id, dst_id))
                 self._spsp_pairs.append((src_id, dst_id))
                 self._spsp_dists.append(value)
                 i += 1
+
         #self._spsp_dists = np.array(self._spsp_dists)
-
-
+        for src_id in edge:
+            dst_nodes = random.sample(node_ids, k=min(len(node_ids), num_samples))
+            for dst_id in dst_nodes:
+                if (src_id, dst_id) not in pairs_set:
+                    path_len = len(self._graph.get_shortest_path(src_id, dst_id)) - 1
+                    # Check if path exists
+                    if path_len > 0:
+                        self._spsp_dists.append(path_len)
+                        self._spsp_pairs.append((src_id, dst_id))
 
 
     def _setup_spsp(self, part=None):
@@ -165,37 +167,37 @@ class RewardManager:
         self._spsp_dists = []
         self._org_edges = set(self._graph._G.nodes())
         # Sample random spsp_pairs
-        if part is None:
-            node_ids = self._graph.get_node_ids()
-        else:
-            node_ids = part.get_node_ids()
+        if self.args.eval:
+            if part is None:
+                node_ids = self._graph.get_node_ids()
+            else:
+                node_ids = part.get_node_ids()
 
-        random.shuffle(node_ids)
+            random.shuffle(node_ids)
+
         
-        
-       
-        # Acquire a minimum number of shortest-path distances
-        while True:
-            src_nodes = random.choices(node_ids, k=math.ceil(self.args.num_spsp_pairs * 0.1))
-            dst_nodes = random.choices(node_ids, k=math.ceil(self.args.num_spsp_pairs * 0.1))
-            for src_id, dst_id in zip(src_nodes, dst_nodes):
-                pair = (src_id, dst_id)
-                if pair not in self._valid_pairs:    
-                    path_len = len(self._graph.get_shortest_path(src_id, dst_id)) - 1
-                    # Check if path exists
-                    if path_len > 0:
-                        self._valid_pairs.add((pair, path_len))
-            
-            if len(self._valid_pairs) >= self.args.num_spsp_pairs:
-                break
+            # Acquire a minimum number of shortest-path distances
+            while True:
+                src_nodes = random.choices(node_ids, k=math.ceil(self.args.num_spsp_pairs * 0.1))
+                dst_nodes = random.choices(node_ids, k=math.ceil(self.args.num_spsp_pairs * 0.1))
+                for src_id, dst_id in zip(src_nodes, dst_nodes):
+                    pair = (src_id, dst_id)
+                    if pair not in self._valid_pairs:    
+                        path_len = len(self._graph.get_shortest_path(src_id, dst_id)) - 1
+                        # Check if path exists
+                        if path_len > 0:
+                            self._valid_pairs.add((pair, path_len))
+                
+                if len(self._valid_pairs) >= self.args.num_spsp_pairs:
+                    break
 
 
-        valid_pairs = random.sample(self._valid_pairs, k=min(self.args.num_spsp_pairs, len(self._valid_pairs)))
-        for pair, dist in valid_pairs:
-            self._spsp_pairs.append(pair)
-            self._spsp_dists.append(dist)            
-            if len(self._spsp_pairs) >= self.args.num_spsp_pairs:    
-                break
+            valid_pairs = random.sample(self._valid_pairs, k=min(self.args.num_spsp_pairs, len(self._valid_pairs)))
+            for pair, dist in valid_pairs:
+                self._spsp_pairs.append(pair)
+                self._spsp_dists.append(dist)            
+                if len(self._spsp_pairs) >= self.args.num_spsp_pairs:    
+                    break
         # self._spsp_dists = np.array(self._spsp_dists
         
     def _compute_spsp_dists(self, sub_one=False):
